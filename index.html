@@ -822,6 +822,9 @@
         .hero h1 { font-size: 4rem; letter-spacing: -0.04em; line-height: 1.05; font-weight: 800; }
         .hero h1 .highlight { background: linear-gradient(120deg, #0f6fec 0%, #6366f1 50%, #8b5cf6 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; position: relative; padding: 0 4px; display: inline-block; }
         .hero h1 .highlight::after { content: ''; position: absolute; left: 4px; right: 4px; bottom: 4px; height: 10px; background: linear-gradient(90deg, rgba(15,111,236,0.18), rgba(139,92,246,0.18)); border-radius: 4px; z-index: -1; transform: scaleX(0); transform-origin: left; animation: hlSweep 1.2s cubic-bezier(0.65,0,0.35,1) 0.4s forwards; }
+    /* Guard: ensure no accidental label text renders around BHMS highlight */
+    .hero h1 .hero-highlight::before,
+    .hero h1 .hero-highlight::after { content: none !important; }
         @keyframes hlSweep { to { transform: scaleX(1); } }
         .hero p { font-size: 1.18rem; color: var(--gray-600); max-width: 640px; }
         .hero-stats { gap: 4rem; padding-top: 3rem; }
