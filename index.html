@@ -45,6 +45,19 @@
     }
     </script>
     <style>
+                /*
+                    CSS structure (single-file)
+                    1) Tokens  : :root, theme vars
+                    2) Base    : element resets, typography
+                    3) Layout  : sections, grids
+                    4) Components: navbar, cards, modals, overlays
+                    5) Utilities: sr-only, skip-link, state helpers
+                    6) Premium polish overrides (Elite block)
+                */
+
+                /* =========================
+                     1) TOKENS
+                ========================== */
         :root {
             --primary: #0f6fec;
             --primary-dark: #0a4fb8;
@@ -93,10 +106,13 @@
         [data-theme="dark"] .settings-field input, [data-theme="dark"] .settings-field textarea { background: #0a0f1a; border-color: #2a3548; color: #e8edf5; }
         [data-theme="dark"] .btn-outline { border-color: var(--primary); color: var(--primary); }
         [data-theme="dark"] .footer { background: #060a12; border-top: 1px solid #1e293b; }
+
+          /* =========================
+              2) BASE
+          ========================== */
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         html { scroll-behavior: smooth; }
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: var(--gray-800); background: var(--white); line-height: 1.6; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
-        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
         :focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
         @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
 
@@ -277,9 +293,18 @@
         .whatsapp-float:hover { transform: scale(1.1) translateY(-2px); box-shadow: 0 8px 24px rgba(37,211,102,0.4); }
         @keyframes whatsappPulse { 0%,100%{box-shadow:0 4px 16px rgba(37,211,102,0.3);} 50%{box-shadow:0 4px 16px rgba(37,211,102,0.3), 0 0 0 10px rgba(37,211,102,0.1);} }
 
+          /* =========================
+              5) UTILITIES
+          ========================== */
+          .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+          .skip-link { position: absolute; left: 12px; top: 12px; z-index: 10000; padding: 0.7rem 1rem; border-radius: 12px; background: rgba(255,255,255,0.9); border: 1px solid rgba(226,232,240,0.9); box-shadow: var(--shadow-lg); color: var(--gray-900); text-decoration: none; font-weight: 700; transform: translateY(-140%); transition: transform 180ms ease; }
+          .skip-link:focus { transform: translateY(0); }
+
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); z-index: 4000; align-items: center; justify-content: center; }
         .modal-overlay.active { display: flex; }
+    body.modal-open { overflow: hidden; }
         .modal { background: var(--white); border-radius: var(--radius-xl); padding: 2.5rem; width: 90%; max-width: 440px; position: relative; animation: modalIn 0.4s cubic-bezier(0.4,0,0.2,1); box-shadow: 0 24px 48px rgba(0,0,0,0.2); border: 1px solid var(--gray-200); }
+    .modal:focus { outline: none; }
         @keyframes modalIn { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         .modal h2 { font-size: 1.4rem; margin-bottom: 0.5rem; color: var(--gray-900); font-weight: 700; }
         .modal .modal-subtitle { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1.5rem; }
@@ -502,8 +527,6 @@
         .dash-header { background: var(--white); border-bottom: 1px solid var(--gray-200); padding: 1rem 1.5rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px); }
         .dash-header h2 { font-size: 1.15rem; font-weight: 800; color: var(--gray-900); display: flex; align-items: center; gap: 0.5rem; }
         .dash-body { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
-        .dash-hero { background: linear-gradient(135deg, #0f6fec 0%, #3b82f6 50%, #0ea5e9 100%); color: #fff; border-radius: 16px; padding: 1.75rem; margin-bottom: 1.5rem; position: relative; overflow: hidden; }
-        .dash-hero::before { content:''; position: absolute; top: -50%; right: -10%; width: 360px; height: 360px; background: radial-gradient(circle, rgba(255,255,255,0.18), transparent 60%); }
         .dash-hero h3 { font-size: 0.78rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700; }
         .dash-hero .dash-hero-title { font-size: 1.6rem; font-weight: 800; margin: 0.4rem 0 0.3rem; }
         .dash-hero .dash-hero-sub { font-size: 0.88rem; opacity: 0.9; margin-bottom: 1rem; }
@@ -896,17 +919,18 @@
 </head>
 <body>
     <div class="aurora-bg" aria-hidden="true"></div>
+    <a href="#main" class="skip-link">Skip to content</a>
     <div class="offline-banner" id="offlineBanner">⚠️ Connection failed. Some features may not work. <button onclick="location.reload()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;margin-left:0.5rem;font-weight:600;">Retry</button></div>
     <div class="toast-container" id="toastContainer" role="alert" aria-live="polite"></div>
 
     <nav class="navbar" role="navigation" aria-label="Main navigation">
         <div class="nav-container">
-            <a href="javascript:void(0)" class="logo" aria-label="HealthIQ Home" onclick="scrollToEl('top')">Health<span>IQ</span></a>
+            <a href="#top" class="logo" aria-label="HealthIQ Home">Health<span>IQ</span></a>
             <ul class="nav-links">
-                <li><a href="javascript:void(0)" onclick="scrollToEl('courses')">Courses</a></li>
-                <li><a href="javascript:void(0)" onclick="scrollToEl('pricing')">Pricing</a></li>
-                <li><a href="javascript:void(0)" onclick="scrollToEl('testimonials')">Reviews</a></li>
-                <li><a href="javascript:void(0)" onclick="scrollToEl('faq')">FAQ</a></li>
+                <li><a href="#courses">Courses</a></li>
+                <li><a href="#pricing">Pricing</a></li>
+                <li><a href="#testimonials">Reviews</a></li>
+                <li><a href="#faq">FAQ</a></li>
             </ul>
             <div class="nav-actions">
                 <button class="dark-toggle" onclick="toggleDark()" aria-label="Toggle dark mode">&#x1F319;</button>
@@ -956,10 +980,10 @@
         </div>
     </nav>
     <div class="mobile-nav" id="mobileNav">
-        <a href="javascript:void(0)" onclick="scrollToEl('courses');toggleMobile()">Courses</a>
-        <a href="javascript:void(0)" onclick="scrollToEl('pricing');toggleMobile()">Pricing</a>
-        <a href="javascript:void(0)" onclick="scrollToEl('testimonials');toggleMobile()">Reviews</a>
-        <a href="javascript:void(0)" onclick="scrollToEl('faq');toggleMobile()">FAQ</a>
+        <a href="#courses" data-mobile-nav-link>Courses</a>
+        <a href="#pricing" data-mobile-nav-link>Pricing</a>
+        <a href="#testimonials" data-mobile-nav-link>Reviews</a>
+        <a href="#faq" data-mobile-nav-link>FAQ</a>
         <div class="mobile-auth" id="mobileAuthButtons">
             <button class="btn btn-primary" onclick="openModal('login');toggleMobile()">Login</button>
         </div>
@@ -971,14 +995,15 @@
         </div>
     </div>
 
+    <main id="main" tabindex="-1">
     <section class="hero">
         <div class="hero-content">
             <span class="hero-badge" id="heroBadge">🏅 By BHMS Gold Medalist | Trusted by 100+ Student</span>
             <h1 id="heroTitle">Premium <span class="hero-highlight"><span class="highlight">BHMS</span></span> Handwritten &amp; Digital Notes</h1>
             <p id="heroDesc">High-yield handwritten notes, BHMS study material, MD prep resources, and clinical case studies &mdash; crafted by a BHMS Gold Medalist for your academic success.</p>
             <div class="hero-buttons">
-                <a href="javascript:void(0)" onclick="scrollToEl('pricing')" class="btn btn-primary btn-lg magnetic">Buy Access</a>
-                <a href="javascript:void(0)" onclick="scrollToEl('courses')" class="btn btn-outline btn-lg magnetic">&#x1F4DA; Explore Courses</a>
+                <a href="#pricing" class="btn btn-primary btn-lg magnetic">Buy Access</a>
+                <a href="#courses" class="btn btn-outline btn-lg magnetic">&#x1F4DA; Explore Courses</a>
             </div>
             <div class="hero-stats">
                 <div class="stat-item"><h3 class="counter" data-target="10000">0</h3><p>Students</p></div>
@@ -1043,8 +1068,8 @@
     <footer class="footer">
         <div class="footer-grid">
             <div><h4>HealthIQ</h4><p>Premium BHMS &amp; MD Homoeopathy notes crafted by a Gold Medalist for aspiring doctors and homoeopathic practitioners.</p></div>
-            <div><h4>Quick Links</h4><a href="javascript:void(0)" onclick="scrollToEl('courses')">Courses</a><a href="javascript:void(0)" onclick="scrollToEl('pricing')">Pricing</a><a href="javascript:void(0)" onclick="scrollToEl('faq')">FAQ</a></div>
-            <div><h4>Legal</h4><a href="javascript:void(0)">Terms of Service</a><a href="javascript:void(0)">Privacy Policy</a><a href="javascript:void(0)">Refund Policy</a></div>
+            <div><h4>Quick Links</h4><a href="#courses">Courses</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
+            <div><h4>Legal</h4><a href="#" data-legal="terms">Terms of Service</a><a href="#" data-legal="privacy">Privacy Policy</a><a href="#" data-legal="refund">Refund Policy</a></div>
             <div><h4>Contact</h4><a href="mailto:support@healthiq.in" id="footerEmail">support@healthiq.in</a><a href="https://wa.me/919876543210" id="footerWhatsapp">WhatsApp: +91 98765 43210</a></div>
         </div>
         <div class="footer-bottom"><p>&copy; 2026 HealthIQ. All rights reserved.</p></div>
@@ -1052,12 +1077,14 @@
 
     <a href="https://wa.me/919876543210" target="_blank" rel="noopener" class="whatsapp-float" aria-label="Chat on WhatsApp">&#x1F4AC;</a>
 
+    </main>
+
     <!-- Login Modal -->
-    <div class="modal-overlay" id="loginModal" role="dialog" aria-modal="true">
+    <div class="modal-overlay" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginTitle" aria-describedby="loginSubtitle">
         <div class="modal">
             <button class="modal-close" onclick="closeModal('login')" aria-label="Close">&times;</button>
-            <h2>Welcome Back</h2>
-            <p class="modal-subtitle">Sign in to access your BHMS & MD notes.</p>
+            <h2 id="loginTitle">Welcome Back</h2>
+            <p class="modal-subtitle" id="loginSubtitle">Sign in to access your BHMS & MD notes.</p>
             <form onsubmit="handleLogin(event)">
                 <div class="form-group"><label for="loginEmail">Email</label><input type="email" id="loginEmail" placeholder="your@email.com" required></div>
                 <div class="form-group"><label for="loginPassword">Password</label><input type="password" id="loginPassword" placeholder="Enter your password" required minlength="6"></div>
@@ -1070,11 +1097,11 @@
     </div>
 
     <!-- Register Modal -->
-    <div class="modal-overlay" id="registerModal" role="dialog" aria-modal="true">
+    <div class="modal-overlay" id="registerModal" role="dialog" aria-modal="true" aria-labelledby="registerTitle" aria-describedby="registerSubtitle">
         <div class="modal">
             <button class="modal-close" onclick="closeModal('register')" aria-label="Close">&times;</button>
-            <h2>Create Account</h2>
-            <p class="modal-subtitle">Join thousands of BHMS students on HealthIQ.</p>
+            <h2 id="registerTitle">Create Account</h2>
+            <p class="modal-subtitle" id="registerSubtitle">Join thousands of BHMS students on HealthIQ.</p>
             <form onsubmit="handleRegister(event)">
                 <div class="form-row"><div class="form-group"><label for="regFirstName">First Name</label><input type="text" id="regFirstName" required></div><div class="form-group"><label for="regLastName">Last Name</label><input type="text" id="regLastName" required></div></div>
                 <div class="form-group"><label for="regUsername">Username</label><input type="text" id="regUsername" required pattern="^[a-zA-Z][a-zA-Z0-9_]{2,29}$"></div>
@@ -1124,7 +1151,7 @@
     </div>
 
     <!-- Course Modal -->
-    <div class="modal-overlay" id="courseModal" role="dialog" aria-modal="true">
+    <div class="modal-overlay" id="courseModal" role="dialog" aria-modal="true" aria-labelledby="courseModalTitle">
         <div class="modal" style="max-width:580px;max-height:90vh;overflow-y:auto;">
             <button class="modal-close" onclick="closeModal('course')" aria-label="Close">&times;</button>
             <h2 id="courseModalTitle">Add New Course</h2>
@@ -1179,16 +1206,211 @@
     };
 
     // ===== UI =====
-    function openModal(t) {
-        const m = document.getElementById(t+'Modal'); if(!m) return;
-        const apply = () => { m.setAttribute('data-vt','modal'); m.classList.add('active'); setTimeout(()=>m.querySelector('input')?.focus(),100); };
-        if(document.startViewTransition){ document.startViewTransition(apply); } else { apply(); }
-    }
-    function closeModal(t) {
-        const m = document.getElementById(t+'Modal'); if(!m) return;
-        const apply = () => { m.classList.remove('active'); setTimeout(()=>m.removeAttribute('data-vt'),320); };
-        if(document.startViewTransition){ document.startViewTransition(apply); } else { apply(); }
-    }
+    const Modal = (() => {
+        let openStack = [];
+
+        const FOCUSABLE_SELECTOR = [
+            'a[href]', 'area[href]', 'button:not([disabled])', 'input:not([disabled])',
+            'select:not([disabled])', 'textarea:not([disabled])', 'iframe',
+            '[tabindex]:not([tabindex="-1"])', '[contenteditable="true"]'
+        ].join(',');
+
+        function getFocusable(root) {
+            return Array.from(root.querySelectorAll(FOCUSABLE_SELECTOR))
+                .filter(el => el.offsetParent !== null && !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
+        }
+
+        function lockScroll() {
+            document.body.classList.add('modal-open');
+        }
+
+        function unlockScroll() {
+            if (openStack.length === 0) document.body.classList.remove('modal-open');
+        }
+
+        function trapKeydown(e) {
+            if (e.key !== 'Tab') return;
+            const top = openStack[openStack.length - 1];
+            if (!top) return;
+
+            const focusables = getFocusable(top.overlay);
+            if (focusables.length === 0) {
+                e.preventDefault();
+                top.dialog.focus();
+                return;
+            }
+
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+
+        function open(type, { initialFocusSelector = 'input, button' } = {}) {
+            const overlay = document.getElementById(type + 'Modal');
+            if (!overlay) return;
+            const dialog = overlay.querySelector('.modal') || overlay;
+
+            const alreadyOpen = overlay.classList.contains('active');
+            if (alreadyOpen) return;
+
+            const previouslyFocused = document.activeElement;
+
+            // Mark background inert for AT
+            document.getElementById('main')?.setAttribute('aria-hidden', 'true');
+            document.querySelector('.navbar')?.setAttribute('aria-hidden', 'true');
+
+            const apply = () => {
+                overlay.setAttribute('data-vt', 'modal');
+                overlay.classList.add('active');
+                lockScroll();
+
+                dialog.setAttribute('tabindex', '-1');
+
+                const target = dialog.querySelector(initialFocusSelector) || getFocusable(dialog)[0] || dialog;
+                setTimeout(() => target.focus(), 50);
+            };
+
+            openStack.push({ type, overlay, dialog, previouslyFocused });
+            overlay.addEventListener('keydown', trapKeydown);
+
+            if (document.startViewTransition) document.startViewTransition(apply);
+            else apply();
+        }
+
+        function close(type) {
+            const overlay = document.getElementById(type + 'Modal');
+            if (!overlay) return;
+
+            const idx = openStack.findIndex(x => x.type === type);
+            if (idx === -1) {
+                // Fallback if stack desynced
+                overlay.classList.remove('active');
+                overlay.removeAttribute('data-vt');
+                unlockScroll();
+                return;
+            }
+
+            const entry = openStack[idx];
+            openStack.splice(idx, 1);
+            entry.overlay.removeEventListener('keydown', trapKeydown);
+
+            const apply = () => {
+                entry.overlay.classList.remove('active');
+                setTimeout(() => entry.overlay.removeAttribute('data-vt'), 320);
+                unlockScroll();
+
+                if (openStack.length === 0) {
+                    document.getElementById('main')?.removeAttribute('aria-hidden');
+                    document.querySelector('.navbar')?.removeAttribute('aria-hidden');
+                }
+
+                setTimeout(() => {
+                    if (entry.previouslyFocused && entry.previouslyFocused.focus) entry.previouslyFocused.focus();
+                }, 0);
+            };
+
+            if (document.startViewTransition) document.startViewTransition(apply);
+            else apply();
+        }
+
+        function closeAll() {
+            const types = openStack.map(x => x.type);
+            types.reverse().forEach(t => close(t));
+        }
+
+        function isAnyOpen() {
+            return openStack.length > 0;
+        }
+
+        return { open, close, closeAll, isAnyOpen };
+    })();
+
+    // Backwards-compatible wrappers for existing inline onclick handlers
+    function openModal(t) { Modal.open(t); }
+    function closeModal(t) { Modal.close(t); }
+
+    // Shared overlay controller for full-screen panes (admin/dashboard/pdf)
+    const Overlay = (() => {
+        let stack = [];
+
+        function lockScroll() {
+            document.body.classList.add('modal-open');
+        }
+
+        function unlockScroll() {
+            if (stack.length === 0 && !Modal.isAnyOpen()) document.body.classList.remove('modal-open');
+        }
+
+        function hideBackground() {
+            document.getElementById('main')?.setAttribute('aria-hidden', 'true');
+            document.querySelector('.navbar')?.setAttribute('aria-hidden', 'true');
+        }
+
+        function showBackground() {
+            document.getElementById('main')?.removeAttribute('aria-hidden');
+            document.querySelector('.navbar')?.removeAttribute('aria-hidden');
+        }
+
+        function open(id, { initialFocusSelector } = {}) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (el.classList.contains('active')) return;
+
+            const previouslyFocused = document.activeElement;
+            hideBackground();
+            el.classList.add('active');
+            lockScroll();
+
+            // Focus management (best-effort)
+            const focusTarget = (initialFocusSelector ? el.querySelector(initialFocusSelector) : null)
+                || el.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+                || el;
+            if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+            setTimeout(() => focusTarget?.focus?.(), 0);
+
+            stack.push({ id, el, previouslyFocused });
+        }
+
+        function close(id) {
+            const idx = stack.findIndex(x => x.id === id);
+            const entry = idx >= 0 ? stack[idx] : null;
+            const el = entry?.el || document.getElementById(id);
+            if (!el) return;
+
+            el.classList.remove('active');
+            if (idx >= 0) stack.splice(idx, 1);
+
+            if (stack.length === 0) showBackground();
+            unlockScroll();
+
+            const toFocus = entry?.previouslyFocused;
+            setTimeout(() => toFocus?.focus?.(), 0);
+        }
+
+        function closeTop() {
+            const top = stack[stack.length - 1];
+            if (!top) return;
+            close(top.id);
+        }
+
+        function isOpen(id) {
+            const el = document.getElementById(id);
+            return !!el?.classList.contains('active');
+        }
+
+        function anyOpen() {
+            return stack.length > 0;
+        }
+
+        return { open, close, closeTop, isOpen, anyOpen };
+    })();
     function showToast(msg, type='success') {
         const c = document.getElementById('toastContainer');
         const t = document.createElement('div'); t.className = 'toast ' + type; t.textContent = msg;
@@ -1203,10 +1425,40 @@
     function toggleMobile() { document.getElementById('mobileNav').classList.toggle('active'); document.querySelector('.hamburger').classList.toggle('active'); }
     function toggleAdminSidebar() { const sb=document.getElementById('adminSidebar'); const ov=document.getElementById('adminSidebarOverlay'); sb.classList.toggle('mobile-open'); ov.classList.toggle('active'); }
     function toggleFaq(el) { const item = el.parentElement; item.classList.toggle('active'); el.setAttribute('aria-expanded', item.classList.contains('active')); }
-    function toggleUserMenu() { document.getElementById('userMenu').classList.toggle('active'); }
+    function toggleUserMenu() {
+        const menu = document.getElementById('userMenu');
+        const btn = document.getElementById('userAvatarBtn');
+        if (!menu) return;
+        const next = !menu.classList.contains('active');
+        menu.classList.toggle('active');
+        if (btn) btn.setAttribute('aria-expanded', next ? 'true' : 'false');
+    }
 
-    document.addEventListener('click', e => { if(e.target.classList.contains('modal-overlay')) e.target.classList.remove('active'); if(!e.target.closest('#userMenuWrapper')) document.getElementById('userMenu')?.classList.remove('active'); });
-    document.addEventListener('keydown', e => { if(e.key==='Escape') { document.querySelectorAll('.modal-overlay.active').forEach(m=>m.classList.remove('active')); } });
+    document.addEventListener('click', e => {
+        if (e.target.classList.contains('modal-overlay')) {
+            const id = e.target.id || '';
+            const type = id.endsWith('Modal') ? id.slice(0, -'Modal'.length) : null;
+            if (type) closeModal(type);
+            return;
+        }
+        if (!e.target.closest('#userMenuWrapper')) {
+            document.getElementById('userMenu')?.classList.remove('active');
+            document.getElementById('userAvatarBtn')?.setAttribute('aria-expanded', 'false');
+        }
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Escape') return;
+        // Priority: modals > overlays (admin/dashboard/pdf)
+        if (Modal.isAnyOpen()) {
+            e.preventDefault();
+            Modal.closeAll();
+            return;
+        }
+        if (Overlay.anyOpen()) {
+            e.preventDefault();
+            Overlay.closeTop();
+        }
+    });
     document.querySelectorAll('.mobile-nav a').forEach(a => a.addEventListener('click', () => document.getElementById('mobileNav').classList.remove('active')));
     if (localStorage.getItem('theme') === 'dark') { document.documentElement.setAttribute('data-theme','dark'); document.querySelectorAll('.dark-toggle').forEach(b=>b.innerHTML='&#x1F31D;'); }
 
@@ -1239,6 +1491,37 @@
         const el=document.getElementById(id);
         if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
     }
+
+    // Progressive enhancement: smooth scroll on in-page anchors (better semantics than javascript:void(0))
+    (function initAnchorScroll() {
+        document.addEventListener('click', (e) => {
+            const a = e.target.closest('a[href^="#"]');
+            if (!a) return;
+
+            const href = a.getAttribute('href');
+            if (!href || href === '#') return;
+
+            const id = href.slice(1);
+            const el = document.getElementById(id);
+            if (!el) return;
+
+            e.preventDefault();
+            // Keep URL + back/forward correct
+            history.pushState(null, '', href);
+            scrollToEl(id);
+
+            if (a.hasAttribute('data-mobile-nav-link')) {
+                const mobileNav = document.getElementById('mobileNav');
+                if (mobileNav?.classList.contains('active')) toggleMobile();
+            }
+        }, { passive: false });
+
+        // Handle opening the page with a hash (or back/forward)
+        window.addEventListener('hashchange', () => {
+            const id = (location.hash || '').slice(1);
+            if (id) scrollToEl(id);
+        });
+    })();
 
     function getGoogleDriveImageUrl(url) {
         if (!url) return '';
@@ -1573,8 +1856,16 @@
         // Show/hide Load More
         const lm=document.getElementById('loadMoreWrap'); if(lm) lm.style.display=hasMore?'block':'none';
     }
-    async function openAdminPanel() { if(!APP.currentUser||APP.currentUser.role!=='admin'){showToast('Access denied','error');return;} document.getElementById('adminPanel').classList.add('active'); document.getElementById('userMenu').classList.remove('active'); document.getElementById('adminUserLabel').textContent=APP.currentUser.name; renderAdminDashboard(); try{ await fetchCourses(); await fetchSettings(); await fetchOrders(); updateSidebarCounts(); renderAdminDashboard(); }catch(e){ console.error('Admin fetch error:',e); } }
-    function closeAdminPanel() { document.getElementById('adminPanel').classList.remove('active'); }
+    async function openAdminPanel() {
+        if(!APP.currentUser||APP.currentUser.role!=='admin'){showToast('Access denied','error');return;}
+        Overlay.open('adminPanel', { initialFocusSelector: '.btn, button, [href], input, select, textarea' });
+        document.getElementById('userMenu').classList.remove('active');
+        document.getElementById('userAvatarBtn')?.setAttribute('aria-expanded', 'false');
+        document.getElementById('adminUserLabel').textContent=APP.currentUser.name;
+        renderAdminDashboard();
+        try{ await fetchCourses(); await fetchSettings(); await fetchOrders(); updateSidebarCounts(); renderAdminDashboard(); }catch(e){ console.error('Admin fetch error:',e); }
+    }
+    function closeAdminPanel() { Overlay.close('adminPanel'); }
     function updateSidebarCounts() { const cc=document.getElementById('sidebarCourseCount'),uc=document.getElementById('sidebarUserCount'),oc=document.getElementById('sidebarOrderCount'),nc=document.getElementById('sidebarNotifCount'); if(cc)cc.textContent=APP.courses.length; if(uc)uc.textContent=APP.users.length; if(oc)oc.textContent=APP.orders.length; const pending=APP.orders.filter(o=>o.status==='pending').length; if(nc){nc.textContent=pending;nc.style.display=pending?'inline':'none';} document.getElementById('lastSyncTime').textContent=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}); }
     async function switchAdminTab(tab,el) { document.querySelectorAll('.admin-sidebar-item').forEach(i=>i.classList.remove('active')); if(el)el.classList.add('active');
         // Lazy load data for tabs that need it
@@ -2044,7 +2335,6 @@
         if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return;
         if(e.key==='r'||e.key==='R'){e.preventDefault();refreshAdminData();}
         if(e.key==='n'||e.key==='N'){e.preventDefault();openAddCourse();}
-        if(e.key==='Escape'){const modals=document.querySelectorAll('.modal-overlay.active'); if(modals.length)return; closeAdminPanel();}
     });
 
     // ===== COURSE CRUD =====
@@ -2222,8 +2512,7 @@
         document.getElementById('pdfViewerMeta').textContent = (APP.currentUser.email || '') + ' \u2022 viewing securely';
         document.getElementById('pdfViewerFrame').src = getDrivePreviewUrl(pdfUrl);
         buildWatermarkGrid();
-        document.getElementById('pdfViewer').classList.add('active');
-        document.body.style.overflow = 'hidden';
+    Overlay.open('pdfViewer', { initialFocusSelector: '.pdf-viewer-bar .btn' });
         // Periodic watermark refresh + progress bump
         Viewer.timer = setInterval(()=>{
             buildWatermarkGrid();
@@ -2242,9 +2531,8 @@
         const seconds = Viewer.startedAt ? Math.round((Date.now()-Viewer.startedAt)/1000) : 0;
         if(Viewer.courseId) logCourseView(Viewer.courseId, 'close', seconds);
         if(Viewer.courseId && seconds>10) recordStudySession(Viewer.courseId, seconds);
-        document.getElementById('pdfViewer').classList.remove('active');
+        Overlay.close('pdfViewer');
         document.getElementById('pdfViewerFrame').src = 'about:blank';
-        document.body.style.overflow = '';
         Viewer.courseId=null; Viewer.title=null; Viewer.startedAt=0;
         // Refresh dashboard data if open
         if(document.getElementById('dashboardOverlay').classList.contains('active')) renderDashboard();
@@ -2327,8 +2615,8 @@
     async function openDashboard(){
         if(!APP.currentUser){ openModal('login'); return; }
         document.getElementById('userMenu')?.classList.remove('active');
-        document.getElementById('dashboardOverlay').classList.add('active');
-        document.body.style.overflow = 'hidden';
+        document.getElementById('userAvatarBtn')?.setAttribute('aria-expanded', 'false');
+        Overlay.open('dashboardOverlay', { initialFocusSelector: '.dash-header .btn, .dash-header button, button, [href], input, select, textarea' });
         // Ensure data is fresh
         await fetchMyEnrollments();
         if(!APP.courses.length) await fetchCourses();
@@ -2336,8 +2624,7 @@
         renderDashboard();
     }
     function closeDashboard(){
-        document.getElementById('dashboardOverlay').classList.remove('active');
-        document.body.style.overflow = '';
+        Overlay.close('dashboardOverlay');
     }
 
     const DashState = { totalSeconds:0, weekSeconds:0, lastCourseId:null };
