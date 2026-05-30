@@ -222,7 +222,18 @@
         .course-badge { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.2); backdrop-filter: blur(8px); padding: 0.3rem 0.75rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600; color: #fff; }
         .course-body { padding: 1.5rem; }
         .course-body h3 { font-size: 1.1rem; font-weight: 700; color: var(--gray-900); margin-bottom: 0.5rem; }
-        .course-body p { font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem; line-height: 1.5; }
+        .course-body p {
+            font-size: 0.9rem;
+            color: var(--gray-600);
+            margin-bottom: 1rem;
+            line-height: 1.5;
+            white-space: normal;
+            overflow: visible;
+            display: block;
+            -webkit-line-clamp: unset;
+            line-clamp: unset;
+            -webkit-box-orient: initial;
+        }
         .course-footer { display: flex; align-items: center; justify-content: space-between; }
         .course-price { font-size: 1.3rem; font-weight: 800; color: var(--primary); background: linear-gradient(135deg, var(--primary), #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .course-actions { display: flex; gap: 0.5rem; }
@@ -1841,7 +1852,7 @@
         const visible=list.slice(0,courseDisplayCount);
         const hasMore=list.length>courseDisplayCount;
         grid.innerHTML=visible.map(c=>{
-            const t=Utils.escapeHtml(c.title),d=Utils.escapeHtml(c.description||c.short_description||''),icon=Utils.escapeHtml(c.icon||'\u{1F4DA}'),badge=Utils.escapeHtml(c.badge||''),cat=Utils.escapeHtml(c.category||'');
+            const t=Utils.escapeHtml(c.title),d=Utils.escapeHtml(c.short_description||''),icon=Utils.escapeHtml(c.icon||'\u{1F4DA}'),badge=Utils.escapeHtml(c.badge||''),cat=Utils.escapeHtml(c.category||'');
             const img=getGoogleDriveImageUrl(c.image_url||c.thumbnail_url);
             const imgH=img?'<img src="'+Utils.escapeHtml(img)+'" alt="'+t+'" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><span style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;font-size:3rem;">'+icon+'</span>':'<span>'+icon+'</span>';
             const enrolled=APP.myEnrollments.find(e=>String(e.course_id)===String(c.id)&&e.status==='active');
