@@ -2082,11 +2082,12 @@
         const ct=document.getElementById('coursesTitle'); if(ct) ct.textContent=s.courses_title||DEFAULT_SETTINGS.courses_title;
         const cs=document.getElementById('coursesSubtitle'); if(cs) cs.textContent=s.courses_subtitle||DEFAULT_SETTINGS.courses_subtitle;
         // WhatsApp & Contact
-        const waNum=s.whatsapp_number||DEFAULT_SETTINGS.whatsapp_number;
+    const waNumRaw=s.whatsapp_number||DEFAULT_SETTINGS.whatsapp_number;
+    const waNum=String(waNumRaw||'').replace(/\D/g,'');
         const email=s.contact_email||DEFAULT_SETTINGS.contact_email;
-        const wa=document.querySelector('.whatsapp-float'); if(wa) wa.href='https://wa.me/'+waNum;
+    const wa=document.querySelector('.whatsapp-float'); if(wa) wa.href='https://wa.me/'+waNum;
         const fe=document.getElementById('footerEmail'); if(fe){fe.href='mailto:'+email; fe.textContent=email;}
-        const fw=document.getElementById('footerWhatsapp'); if(fw){fw.href='https://wa.me/'+waNum; fw.textContent='WhatsApp: +'+waNum.slice(0,2)+' '+waNum.slice(2,7)+' '+waNum.slice(7);}
+    const fw=document.getElementById('footerWhatsapp'); if(fw){fw.href='https://wa.me/'+waNum; fw.textContent='WhatsApp: +'+waNum.slice(0,2)+' '+waNum.slice(2,7)+' '+waNum.slice(7);}
         // Render pricing plans
         renderPricingPlans();
         // Render testimonials & FAQ from settings
