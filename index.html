@@ -985,6 +985,112 @@
             .dash-stat::after, .dash-section::after, .dash-course-row::after { transition: none; }
         }
 
+        /* DASHBOARD ULTIMATE v9 — layout + components */
+        .dash-hero-ultimate { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,0.65fr); gap: 1.6rem; align-items: center; }
+        .dash-hero-content { display: flex; flex-direction: column; gap: 0.7rem; }
+        .dash-hero-badge { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 800; color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.3); padding: 0.35rem 0.75rem; border-radius: 999px; width: fit-content; }
+        .dash-hero-badge span { opacity: 0.8; font-weight: 600; text-transform: none; letter-spacing: 0; }
+        .dash-hero-wave { display: inline-block; animation: dashWave 2.2s ease-in-out infinite; }
+        @keyframes dashWave { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(12deg); } }
+
+        .dash-hero-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+        .dash-ghost { border: 1px solid rgba(255,255,255,0.35); color: #fff; }
+        .dash-ghost:hover { background: rgba(255,255,255,0.2); }
+
+        .dash-hero-panel { display: grid; gap: 0.75rem; padding: 1rem; border-radius: 18px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.25); backdrop-filter: blur(12px); }
+        .dash-hero-metric { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.75rem 0.9rem; border-radius: 14px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35); }
+        .dash-hero-metric span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; opacity: 0.75; }
+        .dash-hero-metric strong { font-size: 1.3rem; font-weight: 800; }
+        .dash-hero-metric em { font-size: 0.75rem; font-style: normal; opacity: 0.85; }
+
+        .dash-stats-ultimate { margin-top: 1.5rem; }
+        .dash-stat-meta { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--gray-500); margin-top: 0.35rem; }
+        [data-theme="dark"] .dash-stat-meta { color: #94a3b8; }
+
+        .dash-insights { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+        .dash-insight-card { background: rgba(255,255,255,0.75); border: 1px solid rgba(15,23,42,0.08); border-radius: 18px; padding: 1.1rem 1.2rem; box-shadow: 0 12px 26px -22px rgba(15,23,42,0.18); }
+        .dash-insight-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.1px; font-weight: 800; color: var(--gray-500); }
+        .dash-insight-value { font-size: 1.05rem; font-weight: 800; margin-top: 0.4rem; color: var(--gray-900); }
+        .dash-insight-sub { font-size: 0.78rem; color: var(--gray-600); margin-top: 0.4rem; }
+        [data-theme="dark"] .dash-insight-card { background: rgba(26,34,51,0.75); border-color: rgba(255,255,255,0.07); }
+        [data-theme="dark"] .dash-insight-label { color: #94a3b8; }
+        [data-theme="dark"] .dash-insight-value { color: #f8fafc; }
+        [data-theme="dark"] .dash-insight-sub { color: #cbd5e1; }
+
+        .dash-course-meta { display: flex; flex-wrap: wrap; gap: 0.6rem; font-size: 0.72rem; color: var(--gray-500); margin-bottom: 0.4rem; }
+        .dash-course-meta span { background: rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.06); padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600; }
+        [data-theme="dark"] .dash-course-meta { color: #94a3b8; }
+        [data-theme="dark"] .dash-course-meta span { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08); }
+        .dash-course-actions { display: flex; align-items: center; }
+
+        .dash-empty { text-align: center; padding: 2rem 1rem; border-radius: 18px; background: rgba(15,111,236,0.06); border: 1px dashed rgba(15,111,236,0.25); }
+        .dash-empty-icon { font-size: 2.2rem; margin-bottom: 0.6rem; }
+        .dash-empty h4 { font-size: 1rem; margin-bottom: 0.4rem; color: var(--gray-900); }
+        .dash-empty p { font-size: 0.85rem; color: var(--gray-600); margin-bottom: 0.9rem; }
+        [data-theme="dark"] .dash-empty { background: rgba(15,111,236,0.12); border-color: rgba(96,165,250,0.35); }
+        [data-theme="dark"] .dash-empty h4 { color: #f8fafc; }
+        [data-theme="dark"] .dash-empty p { color: #cbd5e1; }
+
+        .dash-tip-card { background: linear-gradient(135deg, rgba(239,246,255,0.9), rgba(219,234,254,0.85)); border: 1px solid rgba(147,197,253,0.6); }
+        .dash-tip-card h3 { color: #1e40af; }
+        .dash-tip-card p { font-size: 0.9rem; color: #1e3a8a; line-height: 1.7; }
+        [data-theme="dark"] .dash-tip-card { background: linear-gradient(135deg, rgba(30,58,138,0.2), rgba(15,23,42,0.5)); border-color: rgba(96,165,250,0.4); }
+        [data-theme="dark"] .dash-tip-card h3 { color: #bfdbfe; }
+        [data-theme="dark"] .dash-tip-card p { color: #dbeafe; }
+
+    /* DASHBOARD THEME v10 — contrast & readability */
+    .dash-overlay { color: #0f172a; }
+    [data-theme="dark"] .dash-overlay { color: #e2e8f0; }
+
+    .dash-hero-ultimate { color: #fff; }
+    .dash-hero .dash-hero-sub { color: rgba(255,255,255,0.9); }
+    .dash-hero-badge { color: #f8fafc; }
+    .dash-hero-panel { color: #f8fafc; }
+    .dash-hero-metric strong { color: #f8fafc; }
+    .dash-hero-metric em { color: rgba(248,250,252,0.8); }
+    .dash-hero-metric span { color: rgba(248,250,252,0.75); }
+
+    .dash-stat-label { color: #475569; }
+    .dash-stat-value { color: #0f172a; }
+    .dash-stat-extra { color: #0f766e; }
+    [data-theme="dark"] .dash-stat-label { color: #94a3b8; }
+    [data-theme="dark"] .dash-stat-value { color: #f8fafc; }
+    [data-theme="dark"] .dash-stat-extra { color: #5eead4; }
+
+    .dash-section h3 { color: #0f172a; }
+    .dash-course-info strong { color: #0f172a; }
+    .dash-course-meta { color: #64748b; }
+    .dash-progress-text { color: #64748b; }
+    [data-theme="dark"] .dash-section h3 { color: #f8fafc; }
+    [data-theme="dark"] .dash-course-info strong { color: #f8fafc; }
+    [data-theme="dark"] .dash-course-meta { color: #94a3b8; }
+    [data-theme="dark"] .dash-progress-text { color: #cbd5e1; }
+
+    .dash-course-row { background: rgba(255,255,255,0.78); }
+    .dash-section { background: rgba(255,255,255,0.86); }
+    .dash-stat { background: rgba(255,255,255,0.88); }
+    [data-theme="dark"] .dash-course-row { background: rgba(15,23,42,0.5); }
+    [data-theme="dark"] .dash-section { background: rgba(15,23,42,0.75); }
+    [data-theme="dark"] .dash-stat { background: rgba(15,23,42,0.78); }
+
+    .dash-insight-card { color: #0f172a; }
+    .dash-insight-sub { color: #475569; }
+    [data-theme="dark"] .dash-insight-card { color: #f8fafc; }
+    [data-theme="dark"] .dash-insight-sub { color: #cbd5e1; }
+
+    .dash-empty { color: #0f172a; }
+    [data-theme="dark"] .dash-empty { color: #f8fafc; }
+
+        @media (max-width: 980px) {
+            .dash-hero-ultimate { grid-template-columns: 1fr; }
+            .dash-hero-panel { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+        }
+        @media (max-width: 640px) {
+            .dash-hero-badge { font-size: 0.65rem; }
+            .dash-hero-panel { padding: 0.75rem; }
+            .dash-hero-metric strong { font-size: 1.1rem; }
+        }
+
         /* Smooth scrollbar inside admin/dashboard */
         .admin-content::-webkit-scrollbar, .dash-overlay::-webkit-scrollbar, .user-menu::-webkit-scrollbar { width: 8px; }
         .admin-content::-webkit-scrollbar-thumb, .dash-overlay::-webkit-scrollbar-thumb, .user-menu::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.15); border-radius: 999px; }
@@ -2904,20 +3010,58 @@
         const completed = APP.myEnrollments.filter(e=>(e.progress||0)>=100);
         const last = DashState.lastCourseId ? APP.courses.find(c=>String(c.id)===String(DashState.lastCourseId)) : myCourses[0];
         const lastEnroll = last ? APP.myEnrollments.find(e=>String(e.course_id)===String(last.id)) : null;
+        const lastProgress = lastEnroll ? (lastEnroll.progress||0) : 0;
+        const lastTitle = last ? (last.title||'Your next course') : 'Your next course';
+        const nextGoal = completed.length ? `Next milestone: ${completed.length+1} certificates` : 'Finish your first course to earn a certificate';
 
         body.innerHTML = `
-        <div class="dash-hero">
-            <h3>Welcome back</h3>
-            <div class="dash-hero-title">${Utils.escapeHtml(u.name)} &#x1F44B;</div>
-            <div class="dash-hero-sub">${myCourses.length ? 'Ready to keep learning?' : 'You have no enrolled courses yet — browse below to get started.'}</div>
-            ${last && lastEnroll ? `<button class="btn btn-success" onclick="openSecureViewer('${last.id}','${Utils.escapeHtml(last.pdf_url||'').replace(/'/g,"\\'")}','${Utils.escapeHtml(last.title||'').replace(/'/g,"\\'")}')">&#x25B6; Continue: ${Utils.escapeHtml((last.title||'').slice(0,40))}</button>` : `<button class="btn" onclick="closeDashboard();setTimeout(()=>scrollToEl('courses'),100)" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3);">&#x1F50D; Browse Courses</button>`}
+        <div class="dash-hero dash-hero-ultimate">
+            <div class="dash-hero-content">
+                <div class="dash-hero-badge">Elite Learning Hub <span>• ${fmtHours(DashState.weekSeconds)} this week</span></div>
+                <div class="dash-hero-title">Welcome back, ${Utils.escapeHtml(u.name)} <span class="dash-hero-wave">&#x1F44B;</span></div>
+                <div class="dash-hero-sub">${myCourses.length ? 'Your next breakthrough is one focused session away. Ready to continue?' : 'No enrollments yet — choose a course and build your mastery.'}</div>
+                <div class="dash-hero-actions">
+                    ${last && lastEnroll ? `<button class="btn btn-success btn-md" onclick="openSecureViewer('${last.id}','${Utils.escapeHtml(last.pdf_url||'').replace(/'/g,"\\'")}','${Utils.escapeHtml(last.title||'').replace(/'/g,"\\'")}')">&#x25B6; Continue: ${Utils.escapeHtml((last.title||'').slice(0,40))}</button>` : `<button class="btn btn-primary btn-md" onclick="closeDashboard();setTimeout(()=>scrollToEl('courses'),100)">&#x1F50D; Browse Courses</button>`}
+                    <button class="btn btn-ghost btn-sm dash-ghost" onclick="closeDashboard();setTimeout(()=>scrollToEl('courses'),100)">&#x1F4DA; Explore Catalog</button>
+                </div>
+            </div>
+            <div class="dash-hero-panel">
+                <div class="dash-hero-metric">
+                    <span>Learning Streak</span>
+                    <strong>${streak.count||0} day${(streak.count||0)===1?'':'s'}</strong>
+                    <em>${streak.count ? 'Keep the flame alive' : 'Start your streak today'}</em>
+                </div>
+                <div class="dash-hero-metric">
+                    <span>Total Study Time</span>
+                    <strong>${fmtHours(DashState.totalSeconds)}</strong>
+                    <em>${fmtHours(DashState.weekSeconds)} this week</em>
+                </div>
+            </div>
         </div>
 
-        <div class="dash-stats">
-            <div class="dash-stat"><div class="dash-stat-icon">&#x1F4DA;</div><div class="dash-stat-label">Enrolled</div><div class="dash-stat-value">${myCourses.length}</div><div class="dash-stat-extra">${completed.length} completed</div></div>
-            <div class="dash-stat"><div class="dash-stat-icon">&#x23F1;&#xFE0F;</div><div class="dash-stat-label">Total Study Time</div><div class="dash-stat-value">${fmtHours(DashState.totalSeconds)}</div><div class="dash-stat-extra">${fmtHours(DashState.weekSeconds)} this week</div></div>
-            <div class="dash-stat"><div class="dash-stat-icon">&#x1F525;</div><div class="dash-stat-label">Current Streak</div><div class="dash-stat-value">${streak.count||0} <span style="font-size:0.8rem;font-weight:600;color:var(--gray-600);">day${(streak.count||0)===1?'':'s'}</span></div><div class="dash-stat-extra">${streak.count ? 'Keep going!' : 'Study today to start'}</div></div>
-            <div class="dash-stat"><div class="dash-stat-icon">&#x1F3C6;</div><div class="dash-stat-label">Certificates</div><div class="dash-stat-value">${completed.length}</div><div class="dash-stat-extra">${completed.length ? 'Tap below to download' : 'Finish a course to earn'}</div></div>
+        <div class="dash-stats dash-stats-ultimate">
+            <div class="dash-stat"><div class="dash-stat-icon">&#x1F4DA;</div><div class="dash-stat-label">Enrolled</div><div class="dash-stat-value">${myCourses.length}</div><div class="dash-stat-extra">${completed.length} completed</div><div class="dash-stat-meta">Active library</div></div>
+            <div class="dash-stat"><div class="dash-stat-icon">&#x23F1;&#xFE0F;</div><div class="dash-stat-label">Study Time</div><div class="dash-stat-value">${fmtHours(DashState.totalSeconds)}</div><div class="dash-stat-extra">${fmtHours(DashState.weekSeconds)} this week</div><div class="dash-stat-meta">Momentum</div></div>
+            <div class="dash-stat"><div class="dash-stat-icon">&#x1F525;</div><div class="dash-stat-label">Streak</div><div class="dash-stat-value">${streak.count||0} <span style="font-size:0.8rem;font-weight:600;color:var(--gray-600);">day${(streak.count||0)===1?'':'s'}</span></div><div class="dash-stat-extra">${streak.count ? 'Keep going!' : 'Study today to start'}</div><div class="dash-stat-meta">Consistency</div></div>
+            <div class="dash-stat"><div class="dash-stat-icon">&#x1F3C6;</div><div class="dash-stat-label">Certificates</div><div class="dash-stat-value">${completed.length}</div><div class="dash-stat-extra">${completed.length ? 'Tap below to download' : 'Finish a course to earn'}</div><div class="dash-stat-meta">Achievements</div></div>
+        </div>
+
+        <div class="dash-insights">
+            <div class="dash-insight-card">
+                <div class="dash-insight-label">Current Focus</div>
+                <div class="dash-insight-value">${Utils.escapeHtml(lastTitle)}</div>
+                <div class="dash-insight-sub">${lastProgress}% complete • Keep momentum</div>
+            </div>
+            <div class="dash-insight-card">
+                <div class="dash-insight-label">Weekly Momentum</div>
+                <div class="dash-insight-value">${fmtHours(DashState.weekSeconds)}</div>
+                <div class="dash-insight-sub">Aim for +20% next week</div>
+            </div>
+            <div class="dash-insight-card">
+                <div class="dash-insight-label">Next Milestone</div>
+                <div class="dash-insight-value">${completed.length+1}th certificate</div>
+                <div class="dash-insight-sub">${nextGoal}</div>
+            </div>
         </div>
 
         <div class="dash-section">
@@ -2931,12 +3075,24 @@
                     <div class="dash-course-thumb">&#x1F4DA;</div>
                     <div class="dash-course-info">
                         <strong>${Utils.escapeHtml(c.title||'Course')}</strong>
+                        <div class="dash-course-meta">
+                            <span>${Utils.escapeHtml(c.category||'General')}</span>
+                            <span>${Utils.escapeHtml(c.difficulty||'Beginner')}</span>
+                            <span>${prog}% complete${prog>=100?' \u2714':''}</span>
+                        </div>
                         <div class="dash-progress-track"><div class="dash-progress-fill" style="width:${prog}%;"></div></div>
-                        <div class="dash-progress-text">${prog}% complete${prog>=100?' \u2714':''}</div>
+                        <div class="dash-progress-text">${prog>=100?'Ready for revision':'Focus: next module'}</div>
                     </div>
-                    <button class="btn ${prog>=100?'btn-success':'btn-primary'} btn-sm" onclick="openSecureViewer('${c.id}','${pdfSafe}','${titleSafe}')">${prog>=100?'\u{1F504} Revise':prog>0?'\u25B6 Resume':'\u25B6 Start'}</button>
+                    <div class="dash-course-actions">
+                        <button class="btn ${prog>=100?'btn-success':'btn-primary'} btn-sm" onclick="openSecureViewer('${c.id}','${pdfSafe}','${titleSafe}')">${prog>=100?'\u{1F504} Revise':prog>0?'\u25B6 Resume':'\u25B6 Start'}</button>
+                    </div>
                 </div>`;
-            }).join('') : '<p style="text-align:center;color:var(--gray-600);padding:1.5rem;font-size:0.9rem;">No courses enrolled yet. <button class="btn btn-primary btn-sm" onclick="closeDashboard();setTimeout(()=>scrollToEl(\'courses\'),100)" style="margin-left:0.5rem;">Browse</button></p>'}
+            }).join('') : `<div class="dash-empty">
+                <div class="dash-empty-icon">&#x1F4DA;</div>
+                <h4>No courses yet</h4>
+                <p>Start your learning journey with curated BHMS & MD notes.</p>
+                <button class="btn btn-primary btn-sm" onclick="closeDashboard();setTimeout(()=>scrollToEl('courses'),100)">Browse Courses</button>
+            </div>`}
         </div>
 
         ${completed.length ? `<div class="dash-section">
@@ -2944,9 +3100,9 @@
             ${completed.map(e=>{ const c=APP.courses.find(x=>String(x.id)===String(e.course_id)); if(!c) return ''; const t=Utils.escapeHtml(c.title||'').replace(/'/g,"\\'"); return `<div class="cert-card"><div class="cert-icon">&#x1F396;&#xFE0F;</div><div class="cert-card-body"><strong>${Utils.escapeHtml(c.title||'Course')}</strong><span>Completed on ${new Date(e.completed_at||Date.now()).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span></div><button class="btn btn-primary btn-sm" onclick="downloadCertificate('${t}')">&#x2B07; Download</button></div>`; }).join('')}
         </div>`:''}
 
-        <div class="dash-section" style="background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1px solid #93c5fd;">
-            <h3 style="color:#1e40af;">&#x1F4A1; Pro Study Tip</h3>
-            <p style="font-size:0.88rem;color:#1e3a8a;line-height:1.6;">${["Consistency beats intensity. 30 minutes daily compounds faster than 5-hour weekend marathons.","Active recall: close the notes and write down what you remember. Then check.","Spaced repetition: review yesterday's chapter for 5 minutes before opening today's.","Teach to learn — explain a concept aloud as if teaching a junior."][ (new Date().getDate()) % 4 ]}</p>
+        <div class="dash-section dash-tip-card">
+            <h3>&#x1F4A1; Pro Study Tip</h3>
+            <p>${["Consistency beats intensity. 30 minutes daily compounds faster than 5-hour weekend marathons.","Active recall: close the notes and write down what you remember. Then check.","Spaced repetition: review yesterday's chapter for 5 minutes before opening today's.","Teach to learn — explain a concept aloud as if teaching a junior."][ (new Date().getDate()) % 4 ]}</p>
         </div>`;
     }
 
