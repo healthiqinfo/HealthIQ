@@ -2991,24 +2991,24 @@
         .mobile-nav, .mobile-nav-backdrop { display: none !important; }
 
         /* ==================================================================
-           ===== USER-MENU MOBILE DRAWER v1.6.8 =====
-           Bug: on phones (<=768px) the absolute-positioned dropdown
-           (right:0 of #userMenuWrapper, min-width:300px) was clipped
-           because the wrapper sits at the right edge of .nav-container
-           and the dropdown extended past the viewport / scrollbar.
-           Fix: on mobile, promote the dropdown into a fixed-position
-           right-side drawer pinned to viewport edges, with a tap-to-
-           dismiss backdrop and body-scroll lock. Desktop UI unchanged.
-           Acceptance: full drawer visible on iPhone SE / 13/14/15 +
-           Android 360-430px viewports, no horizontal page scroll while
-           open, smooth slide-in from the right.
+           ===== USER-MENU MOBILE DRAWER v1.6.9 =====
+           v1.6.8 fix: dropdown was clipped on the right edge of phones.
+           v1.6.9 polish: the v1.6.8 drawer was full-viewport-height which
+           felt heavy when the menu only has 3-4 items. Now it auto-sizes
+           to content like the desktop dropdown — it's a fixed-position
+           floating popover pinned to the top-right corner (just below
+           the navbar) with a max-height safety net so it never overflows
+           the viewport on tiny screens.
+           Acceptance: menu height = content height on every phone,
+           drawer never gets clipped on the right, tap-outside still
+           dismisses, Escape still closes. Desktop UI untouched.
            ================================================================== */
 
         /* Backdrop (only painted on mobile via the media query below) */
         .user-menu-backdrop {
             position: fixed;
             inset: 0;
-            background: rgba(15, 23, 42, 0.45);
+            background: rgba(15, 23, 42, 0.32);
             -webkit-backdrop-filter: blur(2px);
             backdrop-filter: blur(2px);
             z-index: 999;
@@ -3017,77 +3017,83 @@
             transition: opacity 0.22s ease;
             display: none;
         }
-        [data-theme="dark"] .user-menu-backdrop { background: rgba(0, 0, 0, 0.58); }
+        [data-theme="dark"] .user-menu-backdrop { background: rgba(0, 0, 0, 0.5); }
         .user-menu-backdrop.active { opacity: 1; pointer-events: auto; }
 
         @media (max-width: 768px) {
-            /* Promote dropdown -> full-height fixed right drawer.
+            /* v1.6.9 — content-sized floating popover.
+               Pinned to top-right of viewport (below navbar) but
+               height: auto so it grows with content like desktop.
                Scoped to #userMenuWrapper so we beat the v6 polish rules
                at line ~3000 without resorting to a tag-soup of !important. */
             #userMenuWrapper .user-menu {
                 position: fixed !important;
-                top: 0 !important;
-                right: 0 !important;
-                bottom: 0 !important;
+                top: calc(env(safe-area-inset-top, 0px) + 72px) !important;
+                right: 12px !important;
+                bottom: auto !important;            /* let height be content-driven */
                 left: auto !important;
-                height: 100vh !important;
-                height: 100dvh !important;          /* honors iOS dynamic viewport */
+                height: auto !important;            /* dynamic — like desktop */
+                max-height: calc(100dvh - 96px) !important;  /* safety: never overflow viewport */
                 width: min(90vw, 320px) !important;
                 min-width: 260px !important;
                 max-width: 320px !important;
                 margin: 0 !important;
-                border-radius: 18px 0 0 18px !important;
-                border-right: none !important;
+                border-radius: 18px !important;     /* all corners — not edge-to-edge anymore */
+                border: 1px solid var(--gray-200) !important;
                 box-shadow:
-                    -18px 0 40px -8px rgba(15, 23, 42, 0.32),
-                    -6px 0 14px -4px rgba(15, 23, 42, 0.18) !important;
-                overflow-y: auto !important;
+                    0 24px 50px -12px rgba(15, 23, 42, 0.28),
+                    0 10px 24px -8px rgba(15, 23, 42, 0.18) !important;
+                overflow-y: auto !important;        /* scrolls if content > max-height */
                 overflow-x: hidden !important;
                 -webkit-overflow-scrolling: touch;
                 z-index: 1001 !important;           /* above backdrop (999) */
-                transform: translateX(100%);        /* offscreen by default */
-                transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+                /* Slide in from the right edge, accounting for the 12px gutter */
+                transform: translateX(calc(100% + 24px));
+                opacity: 0;
+                transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
                 animation: none !important;         /* override v6 scale-in keyframes */
-                padding-top: max(0px, env(safe-area-inset-top));
-                padding-bottom: max(0px, env(safe-area-inset-bottom));
+            }
+            [data-theme="dark"] #userMenuWrapper .user-menu {
+                border-color: rgba(255, 255, 255, 0.08) !important;
             }
             #userMenuWrapper .user-menu.active {
                 display: block !important;
-                transform: translateX(0);           /* slide in */
+                transform: translateX(0);           /* slide in to resting position */
+                opacity: 1;
                 animation: none !important;
             }
-            /* Hide the dropdown's tooltip arrow — it's a drawer now, no arrow needed */
+            /* Hide the dropdown's tooltip arrow — popover sits away from
+               the avatar, so an arrow pointing nowhere would look odd. */
             #userMenuWrapper .user-menu::before,
             #userMenuWrapper .user-menu::after { display: none !important; }
 
-            /* Bigger, finger-friendly tap targets inside the drawer */
+            /* Bigger, finger-friendly tap targets inside the popover */
             #userMenuWrapper .user-menu-item {
-                padding: 0.95rem 1rem !important;
-                font-size: 0.95rem !important;
+                padding: 0.85rem 0.95rem !important;
+                font-size: 0.92rem !important;
                 border-radius: 12px !important;
             }
             #userMenuWrapper .user-menu-item .umi-icon {
-                width: 36px !important;
-                height: 36px !important;
-                font-size: 1.05rem !important;
+                width: 34px !important;
+                height: 34px !important;
+                font-size: 1rem !important;
             }
             #userMenuWrapper .user-menu-header {
-                padding: 1.4rem 1.25rem 1.2rem !important;
+                padding: 1.25rem 1.1rem 1.1rem !important;
             }
             #userMenuWrapper .user-menu-avatar {
-                width: 52px !important;
-                height: 52px !important;
-                font-size: 1.2rem !important;
+                width: 48px !important;
+                height: 48px !important;
+                font-size: 1.15rem !important;
             }
-            #userMenuWrapper .user-menu-section { padding: 0.6rem 0.6rem !important; }
+            #userMenuWrapper .user-menu-section { padding: 0.55rem 0.55rem !important; }
 
-            /* Body scroll lock while drawer is open — prevents the page
-               behind the backdrop from scrolling, prevents horizontal
-               overflow caused by the drawer's slide-in transform. */
+            /* Lightweight scroll containment — the popover is content-sized,
+               so we don't need to lock body scroll (it'd feel jarring when
+               the menu is tiny). We just stop scroll-chaining out of the
+               popover if it does happen to scroll internally. */
             body.user-menu-open {
-                overflow: hidden !important;
                 overscroll-behavior: contain;
-                touch-action: none;
             }
         }
 

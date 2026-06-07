@@ -1,16 +1,15 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.8 — User-menu mobile drawer fix:
-   * On phones (<=768px) the avatar dropdown was clipped at the right
-     edge because the 300px absolute-positioned panel didn't fit next
-     to the wrapper at the viewport edge. Promoted it to a proper
-     fixed-position right-side drawer pinned to viewport edges:
-       - width: min(90vw, 320px), min-width: 260px
-       - full viewport height (100dvh, iOS safe-area aware)
-       - slide-in from the right (translateX 100% -> 0)
-       - tap-to-dismiss backdrop + body scroll-lock while open
-       - bigger touch targets, Escape key + menu-item auto-close.
-     Desktop UI unchanged. */
-const VERSION = 'hiq-v1.6.8';
+   v1.6.9 — User-menu mobile popover polish:
+   * v1.6.8 promoted the user menu to a full-viewport-height right
+     drawer on phones, which felt heavy when there are only 3-4 items
+     (Dashboard / Courses / Admin / Sign Out).
+   * v1.6.9 makes the mobile menu content-sized like the desktop
+     dropdown: fixed-position floating popover pinned to the top-right
+     (just below the navbar), height: auto, with max-height safety
+     so it never overflows the viewport on tiny screens. Smooth slide
+     + fade in, tap-outside / Escape / menu-item-tap still dismiss.
+     Desktop UI untouched. */
+const VERSION = 'hiq-v1.6.9';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
