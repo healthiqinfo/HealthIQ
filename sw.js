@@ -1,26 +1,37 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.13 — Admin Settings now has VERIFIED save (no more silent fails):
-   * Problem: admin typed new WhatsApp number in Settings → Contact &
-     Social, clicked Save, saw "Settings saved!", but on reload / on
-     another device the old number came back. The upsert was returning
-     {data: null, error: null} (silent RLS block) and the old code
-     treated that as success.
+   v1.6.14 — Live Database Diagnostic Panel in admin Settings tab.
+   * Problem: admin reported the WhatsApp number was "still showing the
+     default 919999999999 even after saving from admin panel". v1.6.13
+     added verified-save (so the save itself can't fail silently), but
+     the admin had no way to SEE what was actually in the database
+     versus the local cache versus the hardcoded DEFAULT_SETTINGS
+     fallback. Every "it's not saving" report has been impossible to
+     diagnose without dropping into devtools.
    * Fix:
-     1. saveMultipleSettings + saveSetting now do `.upsert(...).select(...)`
-        so Supabase returns the actually-persisted rows. We verify every
-        key we sent came back with the exact value (catches RLS blocks,
-        triggers that mutate values, and partial writes).
-     2. Errors now include Supabase code + hint + details + a plain-
-        English explanation for common RLS / missing-table patterns —
-        no more vague "Save error: " toasts.
-     3. After successful save, the Settings tab re-renders so the admin
-        sees the canonical DB values (with normalisation applied, e.g.
-        WhatsApp stripped to digits-only).
-     4. WhatsApp number is now normalised to digits-only BEFORE save —
-        strips spaces, '+', '(' etc., so DB stores a clean wa.me-ready
-        value. Plus basic 10-15 digit length validation and email format
-        validation, surfaced as friendly warning toasts. */
-const VERSION = 'hiq-v1.6.13';
+     1. New diagnoseSettings() function runs a fresh SELECT on
+        site_settings (no cache), attempts a write+read test, and
+        builds a full per-key comparison: DB value vs APP.settings
+        cache vs DEFAULT_SETTINGS fallback vs what's actually shown
+        to users.
+     2. New diagnostic panel at the TOP of the admin Settings tab,
+        auto-runs the moment the tab opens and after every save. Shows
+        colour-coded rows (🟢 DB drives UI, 🟡 cache mismatch,
+        🔴 default fallback being used because no DB row exists).
+        Explicit test-write result line so admin instantly sees if
+        RLS is silently blocking writes.
+     3. New "Force Refresh from DB" button that re-fetches and
+        re-renders the form — useful when admin suspects stale cache.
+     4. Banner at the top of the diagnostic shows the count of rows
+        in site_settings — if it's 0, a loud red warning explains
+        every UI value is coming from defaults.
+   * Why this matters: instead of guessing whether a save persisted,
+     the admin gets an immediate visual confirmation panel showing
+     EXACTLY what the database has and EXACTLY what users see.
+   Carries forward from v1.6.13:
+   * Verified-save via .upsert(...).select() on every settings write.
+   * Detailed Supabase error formatting (RLS / missing-table patterns).
+   * WhatsApp digits-only normalisation + length validation. */
+const VERSION = 'hiq-v1.6.14';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

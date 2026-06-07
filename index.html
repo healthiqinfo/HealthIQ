@@ -5107,7 +5107,7 @@
         stat_4_value: '50', stat_4_label: 'Expert Authors',
         courses_title: 'BHMS & MD Notes',
         courses_subtitle: 'Expertly curated, high-yield notes for BHMS exams and MD Homoeopathy preparation.',
-    whatsapp_number: '919999999999',
+    whatsapp_number: '91XXXXXXXXXX',
         contact_email: 'support@healthiq.in',
         footer_description: 'Premium BHMS & MD Homoeopathy notes crafted by a Gold Medalist for aspiring doctors and homoeopathic practitioners worldwide.',
         testimonials: JSON.stringify([
@@ -5179,6 +5179,121 @@
                 + 'Run SUPABASE_DASHBOARD_SETUP.sql in the SQL Editor. Raw: ' + msg;
         }
         return msg;
+    }
+
+    // v1.6.14 — Settings DB diagnostic.
+    // Returns a comprehensive report comparing what's in the DB vs what's
+    // in the local cache vs what's being shown to users. Surfaces the
+    // exact failure mode (table missing, RLS blocking, value mismatch).
+    // The admin Settings tab auto-runs this on render so silent failures
+    // are visible immediately instead of being mistaken for "save bugs".
+    async function diagnoseSettings() {
+        const report = {
+            timestamp: new Date().toISOString(),
+            connection: !!db,
+            dbRows: null,            // array of {key,value,updated_at} | null
+            dbError: null,           // formatted error string | null
+            keys: {},                // perKey: {db, cache, default, rendered, source}
+            testWrite: null,         // { ok, error, persistedValue }
+            summary: { ok: true, issues: [] }
+        };
+
+        if (!isSupabaseConfigured()) {
+            report.connection = false;
+            report.dbError = 'Supabase SDK not loaded — no internet, blocked, or initialising.';
+            report.summary.ok = false;
+            report.summary.issues.push('Database connection unavailable.');
+            return report;
+        }
+
+        // 1. Fresh read of ALL settings (no cache).
+        try {
+            const { data, error } = await db.from('site_settings')
+                .select('key,value,updated_at')
+                .order('key', { ascending: true });
+            if (error) throw error;
+            report.dbRows = data || [];
+        } catch (e) {
+            report.dbError = _fmtDbError(e, 'Read');
+            report.summary.ok = false;
+            report.summary.issues.push('Could not read site_settings: ' + report.dbError);
+            // Fall through — still produce per-key comparison from cache/defaults so
+            // the admin sees what defaults are being used.
+        }
+
+        // Build quick-lookup map of DB values
+        const dbMap = {};
+        (report.dbRows || []).forEach(r => { dbMap[r.key] = r.value; });
+
+        // 2. Per-key comparison — focus on the keys that actually drive contact UI
+        const KEYS_TO_CHECK = [
+            'whatsapp_number', 'contact_email', 'footer_description',
+            'upi_id', 'hero_badge', 'hero_title', 'hero_description',
+            'courses_title', 'courses_subtitle'
+        ];
+        for (const k of KEYS_TO_CHECK) {
+            const dbVal = (k in dbMap) ? dbMap[k] : null; // null = no row at all
+            const cacheVal = (APP.settings && APP.settings[k]) || null;
+            const defVal = DEFAULT_SETTINGS[k] || null;
+            // What the UI actually renders (mirrors applySettings logic: empty → default)
+            const rendered = cacheVal || defVal || '';
+            let source = 'default';
+            if (cacheVal && cacheVal === dbVal) source = 'database';
+            else if (cacheVal && cacheVal !== dbVal && dbVal !== null) source = 'cache-mismatch';
+            else if (cacheVal && dbVal === null) source = 'cache-only';
+            else if (!cacheVal && dbVal) source = 'database';
+
+            report.keys[k] = {
+                db: dbVal,            // null if no row
+                cache: cacheVal,      // null if not in APP.settings
+                default: defVal,
+                rendered: rendered,
+                source: source
+            };
+
+            // Flag issues for the WhatsApp number specifically
+            if (k === 'whatsapp_number') {
+                if (dbVal === null) {
+                    report.summary.ok = false;
+                    report.summary.issues.push('No `whatsapp_number` row in database — site is using DEFAULT fallback (' + (defVal || 'empty') + ').');
+                } else if (dbVal !== cacheVal) {
+                    report.summary.ok = false;
+                    report.summary.issues.push('whatsapp_number DB value ("' + dbVal + '") differs from cached value ("' + (cacheVal || 'empty') + '"). Refresh page.');
+                }
+            }
+        }
+
+        // 3. Test write — only run if DB read succeeded (otherwise pointless)
+        if (!report.dbError) {
+            const probeKey = '_diagnostic_probe';
+            const probeVal = 'probe-' + Date.now();
+            try {
+                const { data, error } = await db.from('site_settings')
+                    .upsert({ key: probeKey, value: probeVal, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+                    .select('key,value');
+                if (error) throw error;
+                const got = (data || []).find(r => r.key === probeKey);
+                if (!got) {
+                    report.testWrite = { ok: false, error: 'Upsert returned no rows (silent RLS block). Add an INSERT+UPDATE policy for authenticated/admin users on `site_settings`.' };
+                    report.summary.ok = false;
+                    report.summary.issues.push('Test write SILENTLY BLOCKED by RLS — your admin saves are not persisting.');
+                } else if (got.value !== probeVal) {
+                    report.testWrite = { ok: false, error: 'Round-trip mismatch: sent "' + probeVal + '", DB returned "' + got.value + '". A trigger may be rewriting values.' };
+                    report.summary.ok = false;
+                    report.summary.issues.push('Test write returned a DIFFERENT value than what was sent.');
+                } else {
+                    report.testWrite = { ok: true, persistedValue: got.value };
+                    // Cleanup the probe row
+                    try { await db.from('site_settings').delete().eq('key', probeKey); } catch(_) {}
+                }
+            } catch (e) {
+                report.testWrite = { ok: false, error: _fmtDbError(e, 'Test write') };
+                report.summary.ok = false;
+                report.summary.issues.push('Test write threw error: ' + report.testWrite.error);
+            }
+        }
+
+        return report;
     }
 
     async function saveSetting(key,value) {
@@ -6544,6 +6659,24 @@
         document.getElementById('adminContent').innerHTML=`
         <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.4rem;font-weight:800;">⚙️ Site Settings</h2><p style="font-size:0.85rem;color:var(--gray-600);">Manage all website content, payment settings, and configuration. Changes go live instantly.</p></div>
 
+        <!-- v1.6.14 — Database Diagnostic Panel.
+             Auto-runs on tab open. Tells the admin EXACTLY what the database
+             has for each setting key, whether writes are working, and whether
+             the displayed value is real DB data or a hardcoded fallback. -->
+        <div class="settings-card" id="settingsDiagnosticCard" style="border:2px solid var(--primary);">
+            <div class="settings-card-header"><span class="settings-icon">🩺</span><div><h3>Database Diagnostics</h3><p>Live status of your <code>site_settings</code> table — runs automatically</p></div></div>
+            <div class="settings-card-body" id="settingsDiagnosticBody">
+                <div style="display:flex;align-items:center;gap:0.75rem;padding:1rem;color:var(--gray-600);">
+                    <span style="display:inline-block;width:14px;height:14px;border:2px solid var(--primary);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span>
+                    <span>Running diagnostic… checking DB connection, reading rows, testing write permission…</span>
+                </div>
+            </div>
+            <div class="settings-card-footer">
+                <button class="btn btn-primary btn-sm" onclick="runSettingsDiagnostic()">🔄 Re-run Diagnostic</button>
+                <button class="btn btn-ghost btn-sm" onclick="forceRefreshSettings()">⬇️ Force Refresh from DB</button>
+            </div>
+        </div>
+
         <!-- Payment Settings -->
         <div class="settings-card">
             <div class="settings-card-header"><span class="settings-icon">💳</span><div><h3>Payment Settings</h3><p>Configure UPI payment details shown to students</p></div></div>
@@ -6621,6 +6754,155 @@
                 <button class="btn btn-ghost btn-sm" onclick="exportCSV()">📄 Export CSV</button>
             </div>
         </div>`;
+        // v1.6.14 — Auto-run the diagnostic the moment the Settings tab paints.
+        // Delayed by one tick so the spinner shows immediately, giving the admin
+        // visual feedback that something IS happening.
+        setTimeout(() => { runSettingsDiagnostic(); }, 60);
+    }
+
+    // v1.6.14 — Public helpers for the diagnostic panel buttons.
+    async function runSettingsDiagnostic() {
+        const body = document.getElementById('settingsDiagnosticBody');
+        if (!body) return;
+        body.innerHTML = `
+            <div style="display:flex;align-items:center;gap:0.75rem;padding:1rem;color:var(--gray-600);">
+                <span style="display:inline-block;width:14px;height:14px;border:2px solid var(--primary);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span>
+                <span>Running diagnostic… checking DB connection, reading rows, testing write permission…</span>
+            </div>`;
+        try {
+            const report = await diagnoseSettings();
+            body.innerHTML = renderSettingsDiagnostic(report);
+        } catch (e) {
+            console.error('[diagnostic] crashed:', e);
+            body.innerHTML = '<div style="padding:1rem;color:var(--danger);">Diagnostic crashed: ' + Utils.escapeHtml(String(e && e.message || e)) + '</div>';
+        }
+    }
+
+    // Force-refresh: re-fetch site_settings from DB, then re-render the whole
+    // Settings tab so the form inputs reflect the canonical DB values (not
+    // whatever was cached locally).
+    async function forceRefreshSettings() {
+        showToast('Refreshing settings from database…', 'info');
+        try {
+            await fetchSettings();
+            renderAdminSettings();
+            showToast('✓ Settings reloaded from database.', 'success');
+        } catch (e) {
+            console.error('[forceRefresh] failed:', e);
+            showToast('Refresh failed: ' + _fmtDbError(e, 'Refresh'), 'error');
+        }
+    }
+
+    // Renders the diagnostic report as a rich HTML panel.
+    // Highlights:
+    //   - 🔴 RED rows where the displayed value comes from DEFAULT, not DB
+    //   - 🟡 AMBER rows where cache and DB disagree
+    //   - 🟢 GREEN rows where DB drives the UI correctly
+    function renderSettingsDiagnostic(r) {
+        const esc = Utils.escapeHtml;
+        let html = '';
+
+        // ----- Top-level status banner -----
+        if (!r.connection) {
+            html += `<div style="padding:0.9rem 1rem;background:#fee2e2;color:#991b1b;border-radius:8px;font-weight:600;margin-bottom:0.75rem;">
+                🚫 Supabase not connected. ${esc(r.dbError || '')}
+            </div>`;
+        } else if (r.dbError) {
+            html += `<div style="padding:0.9rem 1rem;background:#fee2e2;color:#991b1b;border-radius:8px;font-weight:600;margin-bottom:0.75rem;">
+                ❌ Could not read site_settings table:<br><code style="font-size:0.8rem;font-weight:400;">${esc(r.dbError)}</code>
+            </div>`;
+        } else if (r.summary.ok) {
+            html += `<div style="padding:0.9rem 1rem;background:#d1fae5;color:#065f46;border-radius:8px;font-weight:600;margin-bottom:0.75rem;">
+                ✅ All systems operational — DB is the source of truth.
+            </div>`;
+        } else {
+            html += `<div style="padding:0.9rem 1rem;background:#fef3c7;color:#92400e;border-radius:8px;font-weight:600;margin-bottom:0.75rem;">
+                ⚠️ ${r.summary.issues.length} issue${r.summary.issues.length === 1 ? '' : 's'} detected (see below).
+            </div>`;
+        }
+
+        // ----- Issues list (if any) -----
+        if (r.summary.issues.length) {
+            html += `<details open style="margin-bottom:0.75rem;padding:0.75rem;background:var(--gray-50,#f9fafb);border-radius:8px;border-left:3px solid #f59e0b;">
+                <summary style="cursor:pointer;font-weight:600;color:var(--gray-800);">Issues found (${r.summary.issues.length})</summary>
+                <ul style="margin:0.5rem 0 0 1.25rem;padding:0;font-size:0.85rem;color:var(--gray-700);line-height:1.6;">
+                    ${r.summary.issues.map(i => '<li>' + esc(i) + '</li>').join('')}
+                </ul>
+            </details>`;
+        }
+
+        // ----- Test-write result -----
+        if (r.testWrite) {
+            const tw = r.testWrite;
+            const bg = tw.ok ? '#d1fae5' : '#fee2e2';
+            const fg = tw.ok ? '#065f46' : '#991b1b';
+            const icon = tw.ok ? '✅' : '🔒';
+            const msg = tw.ok
+                ? 'Test write PASSED — your admin can persist changes to the database.'
+                : 'Test write FAILED: ' + esc(tw.error || 'unknown error');
+            html += `<div style="padding:0.75rem 1rem;background:${bg};color:${fg};border-radius:8px;font-size:0.88rem;margin-bottom:0.75rem;">
+                ${icon} <strong>Write test:</strong> ${msg}
+            </div>`;
+        }
+
+        // ----- Database row count summary -----
+        const rowCount = (r.dbRows || []).length;
+        html += `<div style="padding:0.6rem 1rem;background:var(--gray-50,#f9fafb);border-radius:8px;font-size:0.85rem;color:var(--gray-700);margin-bottom:0.75rem;">
+            📊 <strong>${rowCount}</strong> row${rowCount === 1 ? '' : 's'} currently in <code>site_settings</code> table.
+            ${rowCount === 0 ? '<br><span style="color:#991b1b;font-weight:600;">⚠️ Empty table — every setting on your site is using DEFAULT fallback values!</span>' : ''}
+        </div>`;
+
+        // ----- Per-key comparison table -----
+        html += `<div style="overflow-x:auto;border-radius:8px;border:1px solid var(--gray-200,#e5e7eb);">
+            <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                <thead>
+                    <tr style="background:var(--gray-100,#f3f4f6);">
+                        <th style="text-align:left;padding:0.6rem 0.8rem;border-bottom:1px solid var(--gray-200,#e5e7eb);">Setting Key</th>
+                        <th style="text-align:left;padding:0.6rem 0.8rem;border-bottom:1px solid var(--gray-200,#e5e7eb);">Database</th>
+                        <th style="text-align:left;padding:0.6rem 0.8rem;border-bottom:1px solid var(--gray-200,#e5e7eb);">Default Fallback</th>
+                        <th style="text-align:left;padding:0.6rem 0.8rem;border-bottom:1px solid var(--gray-200,#e5e7eb);">Shown to Users</th>
+                        <th style="text-align:center;padding:0.6rem 0.8rem;border-bottom:1px solid var(--gray-200,#e5e7eb);">Source</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+        Object.keys(r.keys).forEach(k => {
+            const row = r.keys[k];
+            const fmt = (v) => v === null || v === undefined || v === ''
+                ? '<em style="color:var(--gray-400,#9ca3af);">(empty)</em>'
+                : '<span style="word-break:break-all;">' + esc(String(v).length > 60 ? String(v).slice(0, 60) + '…' : v) + '</span>';
+            let badge = '';
+            let rowBg = '';
+            if (row.source === 'database') {
+                badge = '<span style="background:#d1fae5;color:#065f46;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;font-size:0.7rem;">🟢 DATABASE</span>';
+            } else if (row.source === 'cache-mismatch') {
+                badge = '<span style="background:#fef3c7;color:#92400e;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;font-size:0.7rem;">🟡 MISMATCH</span>';
+                rowBg = 'background:#fffbeb;';
+            } else if (row.source === 'cache-only') {
+                badge = '<span style="background:#fef3c7;color:#92400e;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;font-size:0.7rem;">🟡 CACHE ONLY</span>';
+                rowBg = 'background:#fffbeb;';
+            } else {
+                badge = '<span style="background:#fee2e2;color:#991b1b;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;font-size:0.7rem;">🔴 DEFAULT</span>';
+                rowBg = 'background:#fef2f2;';
+            }
+            html += `<tr style="${rowBg}border-bottom:1px solid var(--gray-100,#f3f4f6);">
+                <td style="padding:0.55rem 0.8rem;font-family:monospace;font-weight:600;">${esc(k)}</td>
+                <td style="padding:0.55rem 0.8rem;">${fmt(row.db)}</td>
+                <td style="padding:0.55rem 0.8rem;">${fmt(row.default)}</td>
+                <td style="padding:0.55rem 0.8rem;font-weight:600;">${fmt(row.rendered)}</td>
+                <td style="padding:0.55rem 0.8rem;text-align:center;">${badge}</td>
+            </tr>`;
+        });
+
+        html += `</tbody></table></div>`;
+
+        // ----- Legend + timestamp -----
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem;font-size:0.75rem;color:var(--gray-500,#6b7280);">
+            <span>🟢 DB drives UI · 🟡 cache differs from DB · 🔴 default fallback (no DB row)</span>
+            <span>Last checked: ${new Date(r.timestamp).toLocaleTimeString()}</span>
+        </div>`;
+
+        return html;
     }
 
     function saveSettingsSection(section) {
