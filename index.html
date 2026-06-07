@@ -4619,6 +4619,119 @@
         return { init, show };
     })();
 
+    // v1.6.17 — Shared WhatsApp target resolver.
+    // The FAB button AND the admin diagnostic both call this so they always
+    // agree on what URL would open. Returns a structured result describing
+    // the full resolution chain, the decision, the human-readable reason,
+    // and the final wa.me URL (or null if no valid number was found).
+    //
+    // Resolution order (most authoritative first):
+    //   1. APP.settings.whatsapp_number   — populated by fetchSettings()
+    //   2. APP._waNumber                  — fast-path cache from applySettings()
+    //   3. DEFAULT_SETTINGS.whatsapp_number — empty in v1.6.16+
+    //   4. LIVE DB QUERY (last resort)    — bypass cache, ask Supabase directly
+    //                                       Catches race conditions where the
+    //                                       initial fetchSettings() didn't run
+    //                                       or completed but APP.settings got
+    //                                       corrupted somehow.
+    //
+    // A number is "valid" iff it's 10-15 digits after non-digit stripping
+    // (E.164 phone number length). Anything shorter would produce a broken
+    // wa.me URL (e.g. wa.me/91 → broken WhatsApp redirect).
+    async function resolveWhatsappTarget(opts) {
+        opts = opts || {};
+        const allowLiveDb = opts.allowLiveDb !== false;
+        const chain = {};
+        const norm = (v) => String(v == null ? '' : v).replace(/\D/g, '');
+
+        const fromSettings = (window.APP && APP.settings && APP.settings.whatsapp_number) || '';
+        const fromCache = (window.APP && APP._waNumber) || '';
+        const fromDefault = (typeof DEFAULT_SETTINGS !== 'undefined' ? DEFAULT_SETTINGS.whatsapp_number : '') || '';
+
+        chain['APP.settings.whatsapp_number'] = { raw: fromSettings, digits: norm(fromSettings) };
+        chain['APP._waNumber'] = { raw: fromCache, digits: norm(fromCache) };
+        chain['DEFAULT_SETTINGS.whatsapp_number'] = { raw: fromDefault, digits: norm(fromDefault) };
+
+        const isValid = (digits) => digits && digits.length >= 10 && digits.length <= 15;
+
+        // Walk the chain in priority order, picking the FIRST valid candidate.
+        let picked = null;
+        const cacheCandidates = [
+            { source: 'APP.settings.whatsapp_number', raw: fromSettings },
+            { source: 'APP._waNumber', raw: fromCache },
+            { source: 'DEFAULT_SETTINGS.whatsapp_number', raw: fromDefault }
+        ];
+        for (const c of cacheCandidates) {
+            const d = norm(c.raw);
+            if (isValid(d)) { picked = { source: c.source, raw: c.raw, num: d }; break; }
+        }
+
+        // Last-resort: live DB query if nothing in cache is valid. This
+        // recovers from race conditions where the page loaded before
+        // fetchSettings() completed, or where APP.settings got cleared.
+        if (!picked && allowLiveDb && typeof db !== 'undefined' && db) {
+            try {
+                const { data, error } = await db
+                    .from('site_settings')
+                    .select('value')
+                    .eq('key', 'whatsapp_number')
+                    .maybeSingle();
+                if (error) {
+                    chain['live DB query'] = { raw: '(error)', digits: '', error: String(error.message || error) };
+                } else if (data && data.value) {
+                    const raw = String(data.value);
+                    const d = norm(raw);
+                    chain['live DB query'] = { raw: raw, digits: d };
+                    if (isValid(d)) {
+                        picked = { source: 'live DB query', raw: raw, num: d };
+                        // Backfill the cache so the next click is instant
+                        if (window.APP) {
+                            if (!APP.settings) APP.settings = {};
+                            APP.settings.whatsapp_number = raw;
+                            APP._waNumber = d;
+                        }
+                    }
+                } else {
+                    chain['live DB query'] = { raw: '(no row)', digits: '' };
+                }
+            } catch (e) {
+                chain['live DB query'] = { raw: '(exception)', digits: '', error: String(e && e.message || e) };
+            }
+        }
+
+        if (picked) {
+            return {
+                ok: true,
+                num: picked.num,
+                raw: picked.raw,
+                source: picked.source,
+                url: 'https://wa.me/' + picked.num,
+                reason: 'Valid — ' + picked.num.length + ' digits from ' + picked.source + '.',
+                chain: chain
+            };
+        }
+
+        // Nothing valid anywhere. Build a precise reason so the user knows why.
+        const anyDigits = cacheCandidates.map(c => norm(c.raw)).find(d => d) || '';
+        let reason;
+        if (!anyDigits) {
+            reason = 'No WhatsApp number is configured. Save one from Admin → Settings → Contact & Social.';
+        } else if (anyDigits.length < 10) {
+            reason = 'Configured WhatsApp value "' + anyDigits + '" is only ' + anyDigits.length + ' digits — needs at least 10 (country code + number).';
+        } else {
+            reason = 'Configured WhatsApp value "' + anyDigits + '" is ' + anyDigits.length + ' digits — needs at most 15.';
+        }
+        return {
+            ok: false,
+            num: anyDigits,
+            raw: anyDigits,
+            source: 'none',
+            url: null,
+            reason: reason,
+            chain: chain
+        };
+    }
+
     // Floating Action Menu controller
     const FabMenu = (() => {
         // v1.6.12 — Background refresh of contact settings when the FAB
@@ -4687,46 +4800,31 @@
                     else if (action === 'theme') toggleDark();
                     else if (action === 'search' && typeof CommandPalette !== 'undefined') CommandPalette.open();
                     else if (action === 'whatsapp') {
-                        // v1.6.12 — Admin Settings is the SINGLE source of truth.
-                        // Resolution order (most authoritative first):
-                        //   1. APP.settings.whatsapp_number — live admin save (refreshed
-                        //      ~once per menu open via refreshContactSettingsSoon).
-                        //   2. APP._waNumber — cached fast-path from loadDynamicContent.
-                        //   3. DEFAULT_SETTINGS.whatsapp_number — the ONE bootstrap
-                        //      default in code (single source of fallback).
-                        // If all three are empty, show a friendly toast instead of
-                        // opening a wrong number. Strips non-digits defensively.
-                        // Console-logs the decision chain so the source is always
-                        // visible in devtools if a user reports a wrong number.
-                        const fromSettings = window.APP && APP.settings && APP.settings.whatsapp_number;
-                        const fromCache = window.APP && APP._waNumber;
-                        const fromDefault = (typeof DEFAULT_SETTINGS !== 'undefined') ? DEFAULT_SETTINGS.whatsapp_number : '';
-                        const raw = fromSettings || fromCache || fromDefault || '';
-                        const num = String(raw).replace(/\D/g, '');
-                        console.debug('[FAB WhatsApp] resolution chain:', {
-                            'APP.settings.whatsapp_number': fromSettings || '(empty)',
-                            'APP._waNumber': fromCache || '(empty)',
-                            'DEFAULT_SETTINGS.whatsapp_number': fromDefault || '(empty)',
-                            'resolved': num || '(none)'
-                        });
-                        // v1.6.16 — Min-length guard. A real phone number with
-                        // country code is 10-15 digits (E.164). Anything shorter
-                        // means we resolved a malformed/placeholder value and would
-                        // open a broken wa.me link (e.g. wa.me/91 redirected to
-                        // api.whatsapp.com/send/?phone=91 — the bug the user
-                        // reported). Treat as "not configured" → friendly toast.
-                        if (!num || num.length < 10 || num.length > 15) {
-                            console.warn('[FAB WhatsApp] resolved number rejected — length=' + num.length + ', value="' + num + '". Not opening wa.me to avoid a broken link.');
-                            showToast('WhatsApp contact is being set up. Please try again in a moment or use the contact email.', 'info');
-                            return;
-                        }
-                        try {
-                            window.open('https://wa.me/' + num, '_blank', 'noopener,noreferrer');
-                        } catch (err) {
-                            // Popup blocked → toast a copy-friendly fallback so users still reach support.
-                            if (navigator.clipboard) navigator.clipboard.writeText('+' + num).catch(() => {});
-                            showToast('Couldn\u2019t open WhatsApp. Number copied: +' + num, 'info');
-                        }
+                        // v1.6.17 — Delegate to the shared resolveWhatsappTarget().
+                        // The resolver checks APP.settings → APP._waNumber →
+                        // DEFAULT_SETTINGS → live DB query (last resort) and
+                        // returns a structured decision. The same function powers
+                        // the diagnostic panel's "Test WhatsApp Link" button so
+                        // the FAB and the diagnostic always agree.
+                        (async () => {
+                            const r = await resolveWhatsappTarget();
+                            console.debug('[FAB WhatsApp] resolution:', r);
+                            if (!r.ok) {
+                                console.warn('[FAB WhatsApp] REJECTED — ' + r.reason, '\nChain:', r.chain);
+                                // More descriptive toast — tells the admin
+                                // exactly what's wrong instead of a generic
+                                // "being set up" message.
+                                showToast(r.reason, 'info', { duration: 6000 });
+                                return;
+                            }
+                            try {
+                                window.open(r.url, '_blank', 'noopener,noreferrer');
+                            } catch (err) {
+                                // Popup blocked → toast a copy-friendly fallback so users still reach support.
+                                if (navigator.clipboard) navigator.clipboard.writeText('+' + r.num).catch(() => {});
+                                showToast('Couldn\u2019t open WhatsApp. Number copied: +' + r.num, 'info');
+                            }
+                        })();
                     }
                     else if (action === 'share') {
                         if (navigator.share) {
@@ -5094,6 +5192,13 @@
 
     // ===== STATE =====
     const APP = { currentUser: null, userProfile: null, courses: [], users: [], orders: [], myOrders: [], enrollments: [], myEnrollments: [], settings: {} };
+
+    // v1.6.17 — Build version stamp. Visible in the admin diagnostic panel so
+    // the admin can confirm at a glance which code is actually running (vs a
+    // stale service-worker cache). Always update this when shipping fixes
+    // that the admin needs to verify are live.
+    const APP_VERSION = '1.6.17';
+    try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
     // v1.6.11: every UI element (footer, FAB, hero, stats, pricing, etc.)
@@ -6715,6 +6820,7 @@
             <div class="settings-card-footer">
                 <button class="btn btn-primary btn-sm" onclick="runSettingsDiagnostic()">🔄 Re-run Diagnostic</button>
                 <button class="btn btn-ghost btn-sm" onclick="forceRefreshSettings()">⬇️ Force Refresh from DB</button>
+                <button class="btn btn-ghost btn-sm" onclick="testWhatsappLink()">📱 Test WhatsApp Link</button>
             </div>
         </div>
 
@@ -6832,6 +6938,74 @@
             console.error('[forceRefresh] failed:', e);
             showToast('Refresh failed: ' + _fmtDbError(e, 'Refresh'), 'error');
         }
+    }
+
+    // v1.6.17 — Test WhatsApp link from the admin diagnostic panel.
+    // Calls the same resolveWhatsappTarget() that the FAB button uses, then
+    // renders the full resolution chain + decision INLINE in the diagnostic
+    // body. The admin sees instantly which source provided the value, why
+    // it was accepted/rejected, and (if accepted) gets a clickable test link.
+    // Eliminates "I saved it but the FAB still complains" debugging cycles.
+    async function testWhatsappLink() {
+        const body = document.getElementById('settingsDiagnosticBody');
+        if (!body) return;
+        const placeholder = document.createElement('div');
+        placeholder.id = 'whatsappTestResult';
+        placeholder.style.cssText = 'margin-top:1rem;padding:1rem;border-radius:8px;background:var(--gray-50,#f9fafb);border-left:3px solid var(--primary,#0f6fec);';
+        placeholder.innerHTML = '<div style="display:flex;align-items:center;gap:0.5rem;color:var(--gray-600);"><span style="display:inline-block;width:12px;height:12px;border:2px solid var(--primary,#0f6fec);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span>Resolving WhatsApp target (includes live DB query)…</div>';
+        // Remove any previous test result then append the new placeholder
+        const old = document.getElementById('whatsappTestResult');
+        if (old) old.remove();
+        body.appendChild(placeholder);
+
+        const r = await resolveWhatsappTarget();
+        console.debug('[testWhatsappLink] result:', r);
+        const esc = Utils.escapeHtml;
+        const headerBg = r.ok ? '#d1fae5' : '#fee2e2';
+        const headerFg = r.ok ? '#065f46' : '#991b1b';
+        const headerIcon = r.ok ? '✅ Would OPEN' : '🚫 Would BLOCK';
+
+        const chainRows = Object.keys(r.chain).map(srcName => {
+            const c = r.chain[srcName];
+            const raw = (c.raw === '' || c.raw == null) ? '<em style="color:var(--gray-400);">(empty)</em>' : esc(c.raw);
+            const digits = c.digits ? esc(c.digits) + ' (' + c.digits.length + ' digits)' : '<em style="color:var(--gray-400);">—</em>';
+            const errBit = c.error ? ' <span style="color:#991b1b;">⚠ ' + esc(c.error) + '</span>' : '';
+            const isPicked = (srcName === r.source);
+            return '<tr' + (isPicked ? ' style="background:#d1fae5;"' : '') + '>'
+                + '<td style="padding:0.4rem 0.7rem;font-family:monospace;font-size:0.78rem;">' + (isPicked ? '✓ ' : '') + esc(srcName) + '</td>'
+                + '<td style="padding:0.4rem 0.7rem;font-family:monospace;font-size:0.78rem;word-break:break-all;">' + raw + errBit + '</td>'
+                + '<td style="padding:0.4rem 0.7rem;font-family:monospace;font-size:0.78rem;">' + digits + '</td>'
+                + '</tr>';
+        }).join('');
+
+        placeholder.innerHTML = ''
+            + '<div style="padding:0.75rem 1rem;background:' + headerBg + ';color:' + headerFg + ';border-radius:6px;font-weight:600;margin-bottom:0.75rem;">'
+            +   headerIcon + ' &mdash; ' + esc(r.reason)
+            + '</div>'
+            + (r.ok
+                ? '<div style="margin-bottom:0.75rem;font-size:0.88rem;">'
+                  + '<strong>URL the FAB will open:</strong> '
+                  + '<a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="font-family:monospace;color:var(--primary);text-decoration:underline;word-break:break-all;">' + esc(r.url) + '</a>'
+                  + '<br><small style="color:var(--gray-600);">Click the link above to test it manually in a new tab.</small>'
+                  + '</div>'
+                : '<div style="margin-bottom:0.75rem;font-size:0.88rem;color:var(--gray-700);">'
+                  + '<strong>Fix:</strong> open the Contact &amp; Social card below, type a valid 10-15 digit WhatsApp number (country code + number, no <code>+</code>), and click <em>Save Contact Settings</em>. Then re-run this test.'
+                  + '</div>'
+              )
+            + '<details open style="margin-top:0.5rem;">'
+            +   '<summary style="cursor:pointer;font-weight:600;font-size:0.85rem;color:var(--gray-700);">Resolution chain (which source provided the value)</summary>'
+            +   '<div style="overflow-x:auto;margin-top:0.4rem;border:1px solid var(--gray-200,#e5e7eb);border-radius:6px;">'
+            +     '<table style="width:100%;border-collapse:collapse;">'
+            +       '<thead><tr style="background:var(--gray-100,#f3f4f6);">'
+            +         '<th style="text-align:left;padding:0.4rem 0.7rem;font-size:0.75rem;">Source (priority order)</th>'
+            +         '<th style="text-align:left;padding:0.4rem 0.7rem;font-size:0.75rem;">Raw value</th>'
+            +         '<th style="text-align:left;padding:0.4rem 0.7rem;font-size:0.75rem;">Digits only</th>'
+            +       '</tr></thead>'
+            +       '<tbody>' + chainRows + '</tbody>'
+            +     '</table>'
+            +   '</div>'
+            +   '<div style="margin-top:0.4rem;font-size:0.72rem;color:var(--gray-500);">Highlighted row = the source the FAB picked. Resolution stops at the first row whose digits-only value is 10-15 chars.</div>'
+            + '</details>';
     }
 
     // Renders the diagnostic report as a rich HTML panel.
@@ -6966,11 +7140,16 @@
 
         html += `</tbody></table></div>`;
 
-        // ----- Legend + timestamp -----
-        html += `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem;font-size:0.75rem;color:var(--gray-500,#6b7280);">
-            <span>🟢 DB drives UI · 🟡 cache differs from DB · � DB row empty (default shown) · 🔴 no DB row (default shown)</span>
-            <span>Last checked: ${new Date(r.timestamp).toLocaleTimeString()}</span>
-        </div>`;
+        // ----- Legend + timestamp + build version -----
+        // v1.6.17 — Showing the running build version helps the admin verify
+        // they're actually on the latest code (not a cached service worker
+        // serving stale JS). If the version below doesn't match the latest
+        // shipped tag, a hard refresh (Ctrl+Shift+R) is needed.
+        const version = (typeof APP_VERSION !== 'undefined') ? APP_VERSION : 'unknown';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem;font-size:0.75rem;color:var(--gray-500,#6b7280);">'
+            + '<span>\u{1F7E2} DB drives UI \u00B7 \u{1F7E1} cache differs from DB \u00B7 \u{1F7E0} DB row empty (default shown) \u00B7 \u{1F534} no DB row (default shown)</span>'
+            + '<span>Build v' + esc(version) + ' \u00B7 Last checked: ' + new Date(r.timestamp).toLocaleTimeString() + '</span>'
+            + '</div>';
 
         return html;
     }
