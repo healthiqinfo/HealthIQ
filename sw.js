@@ -1,8 +1,10 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.4.0 — Bug-bash: clickable command palette (pointerdown), tighter hero
-   header gap, dynamic pricing plans (1–6) with draft / publish persistence
-   and admin add / remove / reorder. Cache bumped to force refresh. */
-const VERSION = 'hiq-v1.4.0';
+   v1.6.3 — Obsidian hero rolled out across the app: admin welcome
+   banner now matches user dashboard (midnight gradient + cyan/violet
+   floating orbs + 1px grid texture + frosted glass action buttons).
+   Replaces the loud blue→navy gradient + plain white circles with
+   the same premium SaaS treatment for brand consistency. */
+const VERSION = 'hiq-v1.6.3';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
