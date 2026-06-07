@@ -3538,7 +3538,7 @@
             <div><h4>HealthIQ</h4><p>Premium BHMS &amp; MD Homoeopathy notes crafted by a Gold Medalist for aspiring doctors and homoeopathic practitioners.</p></div>
             <div><h4>Quick Links</h4><a href="#courses">Courses</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
             <div><h4>Legal</h4><a href="#" data-legal="terms">Terms of Service</a><a href="#" data-legal="privacy">Privacy Policy</a><a href="#" data-legal="refund">Refund Policy</a></div>
-            <div><h4>Contact</h4><a href="mailto:support@healthiq.in" id="footerEmail">support@healthiq.in</a><a href="https://wa.me/919876543210" id="footerWhatsapp">WhatsApp: +91 98765 43210</a></div>
+            <div><h4>Contact</h4><a href="mailto:support@healthiq.in" id="footerEmail">support@healthiq.in</a><a href="https://wa.me/919999321875" id="footerWhatsapp">WhatsApp: +91 99993 21875</a></div>
         </div>
         <div class="footer-bottom"><p>&copy; 2026 HealthIQ. All rights reserved.</p></div>
     </footer>
@@ -4639,8 +4639,21 @@
                     else if (action === 'theme') toggleDark();
                     else if (action === 'search' && typeof CommandPalette !== 'undefined') CommandPalette.open();
                     else if (action === 'whatsapp') {
-                        // Use the live admin-managed number; fall back to the original default.
-                        const num = (window.APP && APP._waNumber) || '919876543210';
+                        // v1.6.10 — single source of truth for the WhatsApp number.
+                        // Priority chain (most authoritative first):
+                        //   1. APP.settings.whatsapp_number — live admin-saved value
+                        //      from the Settings tab (mirrors what the footer shows).
+                        //   2. APP._waNumber — cached fast-path written by
+                        //      loadDynamicContent() after the settings fetch.
+                        //   3. DEFAULT_SETTINGS.whatsapp_number — same default the
+                        //      rest of the app uses if Supabase is unreachable.
+                        //   4. Hardcoded fallback (matches DEFAULT_SETTINGS exactly).
+                        // Always strip non-digits so wa.me/<num> stays clean.
+                        const raw = (window.APP && APP.settings && APP.settings.whatsapp_number)
+                            || (window.APP && APP._waNumber)
+                            || (typeof DEFAULT_SETTINGS !== 'undefined' && DEFAULT_SETTINGS.whatsapp_number)
+                            || '919999321875';
+                        const num = String(raw).replace(/\D/g, '');
                         try {
                             window.open('https://wa.me/' + num, '_blank', 'noopener,noreferrer');
                         } catch (err) {

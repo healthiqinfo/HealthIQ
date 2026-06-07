@@ -1,15 +1,17 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.9 — User-menu mobile popover polish:
-   * v1.6.8 promoted the user menu to a full-viewport-height right
-     drawer on phones, which felt heavy when there are only 3-4 items
-     (Dashboard / Courses / Admin / Sign Out).
-   * v1.6.9 makes the mobile menu content-sized like the desktop
-     dropdown: fixed-position floating popover pinned to the top-right
-     (just below the navbar), height: auto, with max-height safety
-     so it never overflows the viewport on tiny screens. Smooth slide
-     + fade in, tap-outside / Escape / menu-item-tap still dismiss.
-     Desktop UI untouched. */
-const VERSION = 'hiq-v1.6.9';
+   v1.6.10 — FAB WhatsApp now syncs from admin Settings tab:
+   * Bug: clicking the WhatsApp button in the FAB cluster opened
+     wa.me/919876543210 (a stale placeholder), ignoring the number
+     the admin saved in Settings (which the footer correctly used).
+   * Fix: FAB WhatsApp action now reads a 4-level priority chain at
+     click time — APP.settings.whatsapp_number (live admin save) ->
+     APP._waNumber (cached fast-path) -> DEFAULT_SETTINGS.whatsapp_number
+     (offline-safe default) -> hardcoded fallback. Strips non-digits
+     so wa.me URL is always clean.
+   * Also fixed the HTML footer link's hardcoded placeholder to the
+     real default (919999321875) so no-JS / slow-load users see a
+     working number instead of the random placeholder. */
+const VERSION = 'hiq-v1.6.10';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
