@@ -1828,6 +1828,276 @@
         [data-theme="dark"] .admin-stat-card { background: #131c30; border-color: rgba(255,255,255,0.06); }
         [data-theme="dark"] .admin-stat-card .stat-value { color: #f1f5f9; }
         [data-theme="dark"] .admin-stat-card .stat-label { color: #94a3b8; }
+
+        /* ============================================================
+           ULTIMATE ELITE PACK v3 — June 2026
+           The final boss tier of polish.
+           Adds:
+           - Glass navbar with scroll-aware density
+           - Magnetic button hover
+           - 3D tilt cards (perspective + transform-3d)
+           - Material-style ripple
+           - Animated gradient text headline
+           - Image blur-up lazy loader
+           - Floating action menu (FAB cluster)
+           - Toast TTL progress bar
+           - OLED true-black dark mode option
+           - Premium focus glow
+           - Connection status pill
+           - Notification center dropdown
+           - Admin auto-refresh pill
+           - Inline-edit input
+           - Section gradient divider
+           ============================================================ */
+
+        /* 1) Glass navbar — scroll-aware */
+        .navbar { transition: background 0.25s ease, box-shadow 0.25s ease, padding 0.25s ease, backdrop-filter 0.25s ease; }
+        .navbar.is-scrolled {
+            background: rgba(255,255,255,0.88);
+            backdrop-filter: blur(32px) saturate(220%);
+            -webkit-backdrop-filter: blur(32px) saturate(220%);
+            box-shadow: 0 1px 0 rgba(15,23,42,0.05), 0 8px 24px -12px rgba(15,23,42,0.12);
+            padding: 0.55rem 0;
+        }
+        [data-theme="dark"] .navbar.is-scrolled {
+            background: rgba(13, 19, 32, 0.85);
+            box-shadow: 0 1px 0 rgba(255,255,255,0.05), 0 8px 24px -12px rgba(0,0,0,0.4);
+        }
+
+        /* 2) Magnetic button cursor follow (JS sets --mx/--my as fractions) */
+        .magnetic { transition: transform 0.25s cubic-bezier(0.2,0.9,0.3,1.1); will-change: transform; }
+        .magnetic.is-magnetized { transform: translate(calc(var(--mx, 0) * 8px), calc(var(--my, 0) * 8px)); }
+        @media (hover: none) { .magnetic { transform: none !important; } }
+
+        /* 3) 3D tilt cards */
+        .tilt-card {
+            transform-style: preserve-3d;
+            transition: transform 0.35s cubic-bezier(0.2,0.9,0.3,1.05), box-shadow 0.35s;
+            will-change: transform;
+        }
+        .tilt-card.is-tilting {
+            transform: perspective(1000px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0);
+            box-shadow: 0 20px 50px -15px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 111, 236, 0.08);
+        }
+        .tilt-card > * { transform: translateZ(0); }
+        .tilt-card.is-tilting .course-img,
+        .tilt-card.is-tilting .pricing-badge { transform: translateZ(20px); }
+        .tilt-card.is-tilting h3 { transform: translateZ(14px); }
+        @media (hover: none), (prefers-reduced-motion: reduce) {
+            .tilt-card.is-tilting { transform: none !important; box-shadow: var(--shadow-lg) !important; }
+        }
+
+        /* 4) Material ripple on .btn */
+        .ripple {
+            position: absolute; border-radius: 50%; pointer-events: none;
+            background: currentColor; opacity: 0.28;
+            transform: scale(0); animation: rippleOut 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+            mix-blend-mode: overlay;
+        }
+        @keyframes rippleOut { to { transform: scale(4); opacity: 0; } }
+        .btn { isolation: isolate; }
+        @media (prefers-reduced-motion: reduce) { .ripple { display: none; } }
+
+        /* 5) Animated gradient text — the headline upgrade */
+        .gradient-text {
+            background: linear-gradient(120deg, #0f6fec 0%, #6366f1 30%, #8b5cf6 60%, #ec4899 90%, #0f6fec 100%);
+            background-size: 250% 100%;
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent; color: transparent;
+            animation: gradientFlow 8s ease-in-out infinite;
+            display: inline-block;
+        }
+        @keyframes gradientFlow { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+        @media (prefers-reduced-motion: reduce) { .gradient-text { animation: none; } }
+
+        /* 6) Image blur-up lazy loader */
+        .lazy-img {
+            filter: blur(14px); transform: scale(1.04);
+            transition: filter 0.6s ease, transform 0.6s ease;
+            background: var(--gray-100);
+        }
+        .lazy-img.is-loaded { filter: blur(0); transform: scale(1); }
+
+        /* 7) Floating action menu (FAB cluster) */
+        .fab-menu {
+            position: fixed; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+            left: 24px; z-index: 998; display: flex; flex-direction: column-reverse;
+            align-items: flex-start; gap: 0.6rem; pointer-events: none;
+        }
+        .fab-menu > * { pointer-events: auto; }
+        .fab-action {
+            display: flex; align-items: center; gap: 0.55rem;
+            padding: 0.55rem 0.85rem 0.55rem 0.55rem; border-radius: 999px;
+            background: var(--white); color: var(--gray-800);
+            border: 1px solid var(--gray-200); cursor: pointer;
+            box-shadow: 0 6px 16px -4px rgba(15, 23, 42, 0.15);
+            font-size: 0.85rem; font-weight: 600;
+            opacity: 0; transform: translateY(8px) scale(0.9); pointer-events: none;
+            transition: all 0.22s cubic-bezier(0.2,0.9,0.3,1.1);
+        }
+        .fab-menu.is-open .fab-action { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+        .fab-menu.is-open .fab-action:nth-child(2) { transition-delay: 0.04s; }
+        .fab-menu.is-open .fab-action:nth-child(3) { transition-delay: 0.08s; }
+        .fab-menu.is-open .fab-action:nth-child(4) { transition-delay: 0.12s; }
+        .fab-action:hover { transform: translateY(-2px) scale(1.02); border-color: var(--primary); color: var(--primary); }
+        .fab-action .fab-icon {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--gray-50); display: inline-flex;
+            align-items: center; justify-content: center; font-size: 1rem;
+        }
+        .fab-trigger {
+            width: 52px; height: 52px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), #6366f1);
+            color: #fff; border: none; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem; box-shadow: 0 8px 24px -6px rgba(15, 111, 236, 0.5);
+            transition: transform 0.25s cubic-bezier(0.2,0.9,0.3,1.1);
+        }
+        .fab-trigger:hover { transform: scale(1.06) rotate(10deg); }
+        .fab-menu.is-open .fab-trigger { transform: rotate(45deg); }
+        [data-theme="dark"] .fab-action { background: #1a2233; color: #cbd5e1; border-color: rgba(255,255,255,0.08); }
+        [data-theme="dark"] .fab-action .fab-icon { background: rgba(255,255,255,0.06); }
+        /* When FAB is mounted, hide the legacy back-to-top button to avoid stacking */
+        body.has-fab .back-to-top { display: none !important; }
+
+        /* 8) Toast TTL progress bar */
+        .toast { padding-bottom: 1.35rem; }
+        .toast-progress {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            height: 3px; background: currentColor; opacity: 0.45;
+            transform-origin: right;
+            animation: toastProgress var(--ttl, 3500ms) linear forwards;
+        }
+        .toast.success .toast-progress { color: var(--success); }
+        .toast.error .toast-progress { color: var(--danger); }
+        .toast.warning .toast-progress { color: var(--warning); }
+        .toast.info .toast-progress { color: var(--primary); }
+        @keyframes toastProgress { to { transform: scaleX(0); } }
+        @media (prefers-reduced-motion: reduce) { .toast-progress { animation: none; } }
+
+        /* 9) OLED true-black mode (opt-in via [data-theme="dark"][data-oled]) */
+        [data-theme="dark"][data-oled] { --gray-50: #000000; --gray-100: #050507; --white: #000000; }
+        [data-theme="dark"][data-oled] body { background: #000 !important; }
+        [data-theme="dark"][data-oled] .navbar { background: rgba(0,0,0,0.85); }
+        [data-theme="dark"][data-oled] .admin-panel { background: #000 !important; }
+        [data-theme="dark"][data-oled] .admin-sidebar { background: linear-gradient(180deg, #000 0%, #060810 100%); }
+
+        /* 10) Premium focus glow */
+        .btn:focus-visible, .nav-link:focus-visible, .cmdk-hint-btn:focus-visible, .fab-action:focus-visible, .fab-trigger:focus-visible {
+            box-shadow: 0 0 0 3px rgba(15, 111, 236, 0.25), 0 0 0 5px rgba(15, 111, 236, 0.1);
+            outline-offset: 4px;
+        }
+
+        /* 11) Connection status pill */
+        .conn-status {
+            position: fixed; top: 82px; right: 16px;
+            z-index: 997; padding: 0.35rem 0.7rem 0.35rem 0.55rem;
+            background: var(--white); border: 1px solid var(--gray-200);
+            border-radius: 999px; font-size: 0.72rem; font-weight: 600;
+            box-shadow: 0 4px 12px -4px rgba(15, 23, 42, 0.15);
+            display: none; align-items: center; gap: 0.4rem;
+            animation: connSlide 0.3s ease both;
+        }
+        .conn-status.is-visible { display: inline-flex; }
+        @keyframes connSlide { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        .conn-status.online { color: var(--success); }
+        .conn-status.offline { color: var(--danger); }
+        .conn-status .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
+        [data-theme="dark"] .conn-status { background: #1a2233; border-color: rgba(255,255,255,0.08); }
+        @media (max-width: 480px) { .conn-status { top: 72px; right: 12px; font-size: 0.68rem; } }
+
+        /* 12) Notification center dropdown (admin) */
+        .notif-center {
+            position: absolute; top: calc(100% + 8px); right: 0;
+            width: min(360px, 92vw); max-height: 480px; overflow: hidden;
+            background: var(--white); border: 1px solid var(--gray-200); border-radius: 14px;
+            box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.25);
+            opacity: 0; transform: translateY(-8px) scale(0.97); pointer-events: none;
+            transition: all 0.2s cubic-bezier(0.2,0.9,0.3,1.1);
+            z-index: 50;
+        }
+        .notif-center.is-open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+        .notif-center-head { padding: 0.85rem 1rem; border-bottom: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: center; }
+        .notif-center-head h4 { font-size: 0.9rem; font-weight: 700; margin: 0; }
+        .notif-center-head button { background: none; border: none; color: var(--primary); font-size: 0.75rem; font-weight: 600; cursor: pointer; padding: 0.2rem 0.4rem; border-radius: 4px; }
+        .notif-center-head button:hover { background: var(--primary-light); }
+        .notif-list { max-height: 380px; overflow-y: auto; padding: 0.4rem; }
+        .notif-row {
+            display: flex; align-items: flex-start; gap: 0.75rem;
+            padding: 0.7rem 0.75rem; border-radius: 10px; cursor: pointer;
+            transition: background 0.15s;
+        }
+        .notif-row:hover { background: var(--gray-50); }
+        .notif-row.unread { background: linear-gradient(90deg, rgba(15,111,236,0.05), transparent); }
+        .notif-row .notif-icon { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.95rem; background: var(--primary-light); }
+        .notif-row .notif-body { flex: 1; min-width: 0; font-size: 0.82rem; color: var(--gray-800); }
+        .notif-row .notif-time { font-size: 0.7rem; color: var(--gray-300); margin-top: 2px; }
+        .notif-empty { padding: 2rem 1rem; text-align: center; color: var(--gray-300); font-size: 0.85rem; }
+        [data-theme="dark"] .notif-center { background: #131c30; border-color: rgba(255,255,255,0.08); }
+        [data-theme="dark"] .notif-center-head { border-bottom-color: rgba(255,255,255,0.06); }
+        [data-theme="dark"] .notif-row { color: #cbd5e1; }
+        [data-theme="dark"] .notif-row:hover { background: rgba(255,255,255,0.04); }
+        [data-theme="dark"] .notif-row.unread { background: linear-gradient(90deg, rgba(59,139,255,0.1), transparent); }
+
+        /* 13) Admin auto-refresh pill */
+        .auto-refresh-pill {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            padding: 0.35rem 0.7rem; border-radius: 999px;
+            background: var(--gray-50); border: 1px solid var(--gray-200);
+            font-size: 0.72rem; font-weight: 600; color: var(--gray-600);
+        }
+        .auto-refresh-pill .ar-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--gray-300); transition: background 0.2s;
+        }
+        .auto-refresh-pill.is-on .ar-dot { background: var(--success); box-shadow: 0 0 6px var(--success); animation: arPulse 2s ease-in-out infinite; }
+        @keyframes arPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .auto-refresh-pill button {
+            background: none; border: none; color: var(--primary);
+            font-size: 0.72rem; font-weight: 700; cursor: pointer; padding: 0; margin-left: 0.25rem;
+        }
+        [data-theme="dark"] .auto-refresh-pill { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: #94a3b8; }
+
+        /* 14) Inline edit input */
+        .inline-edit-input {
+            background: var(--primary-light); border: 1px solid var(--primary);
+            border-radius: 6px; padding: 0.3rem 0.5rem; font-size: inherit; font-family: inherit;
+            color: var(--gray-900); outline: none; max-width: 100%;
+            box-shadow: 0 0 0 3px rgba(15, 111, 236, 0.15);
+        }
+        .inline-editable { cursor: text; transition: background 0.15s; border-radius: 4px; padding: 1px 4px; }
+        .inline-editable:hover { background: var(--gray-100); }
+        [data-theme="dark"] .inline-editable:hover { background: rgba(255,255,255,0.06); }
+
+        /* 15) Section gradient divider */
+        .section + .section { position: relative; }
+        .section + .section::before {
+            content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            width: min(160px, 40%); height: 1px;
+            background: linear-gradient(90deg, transparent, var(--gray-200), transparent);
+        }
+        [data-theme="dark"] .section + .section::before { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); }
+
+        /* 16) Premium scroll progress — add subtle shimmer overlay */
+        .scroll-progress::after {
+            content: ''; position: absolute; top: 0; right: 0; height: 100%; width: 60px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+            animation: scrollShimmer 2s linear infinite;
+        }
+        @keyframes scrollShimmer { 0% { transform: translateX(-100px); } 100% { transform: translateX(100vw); } }
+        @media (prefers-reduced-motion: reduce) { .scroll-progress::after { animation: none; display: none; } }
+
+        /* 17) Course-card refined elevation on hover (sits well with tilt) */
+        .course-card, .pricing-card { transition: transform 0.35s cubic-bezier(0.2,0.9,0.3,1.05), box-shadow 0.35s, border-color 0.25s; }
+
+        /* 18) OLED mode toggle button in user menu */
+        .oled-toggle {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            padding: 0.3rem 0.6rem; border-radius: 999px;
+            background: var(--gray-100); border: 1px solid var(--gray-200);
+            font-size: 0.7rem; font-weight: 700; cursor: pointer; color: var(--gray-600);
+        }
+        .oled-toggle.is-on { background: #000; color: #fff; border-color: #000; }
     </style>
 </head>
 <body>
@@ -1899,6 +2169,10 @@
                         </div>
                         <div class="user-menu-divider"></div>
                         <div class="user-menu-section">
+                            <button class="user-menu-item" onclick="toggleOLED()">
+                                <span class="umi-icon">&#x26AB;</span>
+                                <span>OLED True-Black <button type="button" class="oled-toggle" onclick="event.stopPropagation();toggleOLED();return false;" aria-label="Toggle OLED mode">ON</button></span>
+                            </button>
                             <button class="user-menu-item danger" onclick="logout()">
                                 <span class="umi-icon">&#x1F6AA;</span>
                                 <span>Sign Out</span>
@@ -1931,7 +2205,7 @@
     <section class="hero">
         <div class="hero-content">
             <span class="hero-badge" id="heroBadge">🏅 By BHMS Gold Medalist | Trusted by 100+ Student</span>
-            <h1 id="heroTitle">Premium <span class="hero-highlight"><span class="highlight">BHMS</span></span> Handwritten &amp; Digital Notes</h1>
+            <h1 id="heroTitle">Premium <span class="hero-highlight"><span class="highlight gradient-text">BHMS</span></span> Handwritten &amp; Digital Notes</h1>
             <p id="heroDesc">High-yield handwritten notes, BHMS study material, MD prep resources, and clinical case studies &mdash; crafted by a BHMS Gold Medalist for your academic success.</p>
             <div class="hero-buttons">
                 <a href="#pricing" class="btn btn-primary btn-lg magnetic">Buy Access</a>
@@ -2013,6 +2287,18 @@
 
     <a href="https://wa.me/919876543210" target="_blank" rel="noopener" class="whatsapp-float" aria-label="Chat on WhatsApp">&#x1F4AC;</a>
     <button type="button" class="back-to-top" id="backToTop" aria-label="Back to top" title="Back to top" hidden>&#x2191;</button>
+
+    <!-- Floating Action Menu (FAB cluster) -->
+    <div class="fab-menu" id="fabMenu" role="region" aria-label="Quick actions">
+        <button type="button" class="fab-action" data-fab-action="top" aria-label="Back to top"><span class="fab-icon">&#x2191;</span><span>Back to top</span></button>
+        <button type="button" class="fab-action" data-fab-action="theme" aria-label="Toggle dark mode"><span class="fab-icon">&#x1F319;</span><span>Theme</span></button>
+        <button type="button" class="fab-action" data-fab-action="search" aria-label="Open search"><span class="fab-icon">&#x1F50D;</span><span>Search</span></button>
+        <button type="button" class="fab-action" data-fab-action="share" aria-label="Share site"><span class="fab-icon">&#x1F517;</span><span>Share</span></button>
+        <button type="button" class="fab-trigger" id="fabTrigger" aria-haspopup="true" aria-expanded="false" aria-label="Open quick actions" title="Quick actions">&#x2728;</button>
+    </div>
+
+    <!-- Connection status pill -->
+    <div class="conn-status" id="connStatus" role="status" aria-live="polite"><span class="dot"></span><span class="label">Online</span></div>
 
     </main>
 
@@ -2355,13 +2641,15 @@
         const icon = document.createElement('span'); icon.className = 'toast-icon'; icon.setAttribute('aria-hidden','true'); icon.textContent = icons[type] || icons.info;
         const text = document.createElement('span'); text.className = 'toast-text'; text.textContent = msg;
         const close = document.createElement('button'); close.type = 'button'; close.className = 'toast-close'; close.setAttribute('aria-label','Dismiss'); close.innerHTML = '&times;';
-        t.appendChild(icon); t.appendChild(text); t.appendChild(close);
+        const prog = document.createElement('span'); prog.className = 'toast-progress'; prog.setAttribute('aria-hidden','true');
+        t.appendChild(icon); t.appendChild(text); t.appendChild(close); t.appendChild(prog);
         let removed = false;
         function dismiss() { if (removed) return; removed = true; t.classList.add('toast-leaving'); setTimeout(()=>{ if (t.parentNode) t.remove(); }, 240); }
         close.addEventListener('click', e => { e.stopPropagation(); dismiss(); });
         t.addEventListener('click', dismiss);
         c.appendChild(t);
         const ttl = typeof opts.duration === 'number' ? opts.duration : (type === 'error' || type === 'warning' ? 5000 : 3500);
+        prog.style.setProperty('--ttl', ttl + 'ms');
         setTimeout(dismiss, ttl);
         return t;
     }
@@ -2784,6 +3072,420 @@
         if (typeof Reveals !== 'undefined') Reveals.init();
     });
 
+    // ===== ULTIMATE ELITE MODULES (v3) =====
+
+    // Magnetic hover for buttons marked .magnetic
+    const Magnetic = (() => {
+        function bind(el) {
+            if (el._magneticBound) return; el._magneticBound = true;
+            let raf = null;
+            function move(e) {
+                const r = el.getBoundingClientRect();
+                const x = (e.clientX - r.left) / r.width - 0.5;
+                const y = (e.clientY - r.top) / r.height - 0.5;
+                if (raf) cancelAnimationFrame(raf);
+                raf = requestAnimationFrame(() => {
+                    el.style.setProperty('--mx', x.toFixed(3));
+                    el.style.setProperty('--my', y.toFixed(3));
+                    el.classList.add('is-magnetized');
+                });
+            }
+            function leave() {
+                if (raf) cancelAnimationFrame(raf);
+                el.style.setProperty('--mx', 0);
+                el.style.setProperty('--my', 0);
+                el.classList.remove('is-magnetized');
+            }
+            el.addEventListener('mousemove', move);
+            el.addEventListener('mouseleave', leave);
+        }
+        function init(root = document) {
+            if (window.matchMedia('(hover: none)').matches) return;
+            root.querySelectorAll('.magnetic').forEach(bind);
+        }
+        return { init, bind };
+    })();
+
+    // 3D tilt for cards marked .tilt-card
+    const Tilt = (() => {
+        const MAX = 6; // degrees
+        function bind(el) {
+            if (el._tiltBound) return; el._tiltBound = true;
+            let raf = null;
+            function move(e) {
+                const r = el.getBoundingClientRect();
+                const x = (e.clientX - r.left) / r.width;
+                const y = (e.clientY - r.top) / r.height;
+                const ry = (x - 0.5) * MAX * 2;
+                const rx = -(y - 0.5) * MAX * 2;
+                if (raf) cancelAnimationFrame(raf);
+                raf = requestAnimationFrame(() => {
+                    el.style.setProperty('--rx', rx.toFixed(2) + 'deg');
+                    el.style.setProperty('--ry', ry.toFixed(2) + 'deg');
+                    el.classList.add('is-tilting');
+                });
+            }
+            function leave() {
+                if (raf) cancelAnimationFrame(raf);
+                el.style.setProperty('--rx', '0deg');
+                el.style.setProperty('--ry', '0deg');
+                el.classList.remove('is-tilting');
+            }
+            el.addEventListener('mousemove', move);
+            el.addEventListener('mouseleave', leave);
+        }
+        function init(root = document) {
+            if (window.matchMedia('(hover: none)').matches || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            root.querySelectorAll('.tilt-card').forEach(bind);
+        }
+        return { init, bind };
+    })();
+
+    // Material-style ripple on .btn clicks (delegated)
+    const Ripple = (() => {
+        function attach() {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            document.addEventListener('pointerdown', e => {
+                const btn = e.target && e.target.closest && e.target.closest('.btn');
+                if (!btn || btn.disabled) return;
+                const r = btn.getBoundingClientRect();
+                const size = Math.max(r.width, r.height);
+                const x = (e.clientX || (r.left + r.width / 2)) - r.left - size / 2;
+                const y = (e.clientY || (r.top + r.height / 2)) - r.top - size / 2;
+                const ripple = document.createElement('span');
+                ripple.className = 'ripple';
+                ripple.style.width = ripple.style.height = size + 'px';
+                ripple.style.left = x + 'px';
+                ripple.style.top = y + 'px';
+                btn.appendChild(ripple);
+                setTimeout(() => { if (ripple.parentNode) ripple.remove(); }, 650);
+            }, { passive: true });
+        }
+        return { attach };
+    })();
+
+    // Image blur-up lazy loader (apply .lazy-img with data-src)
+    const LazyImg = (() => {
+        let io = null;
+        function load(img) {
+            const src = img.dataset.src;
+            if (!src) { img.classList.add('is-loaded'); return; }
+            const tmp = new Image();
+            tmp.onload = () => { img.src = src; img.classList.add('is-loaded'); };
+            tmp.onerror = () => { img.classList.add('is-loaded'); };
+            tmp.src = src;
+        }
+        function init(root = document) {
+            if (!('IntersectionObserver' in window)) {
+                root.querySelectorAll('.lazy-img[data-src]').forEach(load);
+                return;
+            }
+            if (!io) {
+                io = new IntersectionObserver(entries => {
+                    entries.forEach(en => { if (en.isIntersecting) { load(en.target); io.unobserve(en.target); } });
+                }, { rootMargin: '120px' });
+            }
+            root.querySelectorAll('.lazy-img[data-src]:not(.is-loaded)').forEach(el => io.observe(el));
+        }
+        return { init };
+    })();
+
+    // Navbar scroll-aware glass
+    const NavbarScroll = (() => {
+        function init() {
+            const nav = document.querySelector('.navbar');
+            if (!nav) return;
+            let ticking = false;
+            function update() {
+                ticking = false;
+                nav.classList.toggle('is-scrolled', (window.scrollY || 0) > 8);
+            }
+            window.addEventListener('scroll', () => {
+                if (!ticking) { ticking = true; requestAnimationFrame(update); }
+            }, { passive: true });
+            update();
+        }
+        return { init };
+    })();
+
+    // Smooth scroll for anchor links with easing (overrides default)
+    const SmoothScroll = (() => {
+        function ease(t) { return 1 - Math.pow(1 - t, 3); }
+        function scrollTo(targetY, duration = 700) {
+            const startY = window.scrollY;
+            const delta = targetY - startY;
+            const start = performance.now();
+            function step(now) {
+                const t = Math.min(1, (now - start) / duration);
+                window.scrollTo(0, startY + delta * ease(t));
+                if (t < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        }
+        function init() {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            document.addEventListener('click', e => {
+                const a = e.target && e.target.closest && e.target.closest('a[href^="#"]');
+                if (!a) return;
+                const href = a.getAttribute('href');
+                if (!href || href === '#' || href.length < 2) return;
+                const target = document.querySelector(href);
+                if (!target) return;
+                e.preventDefault();
+                const navH = document.querySelector('.navbar')?.offsetHeight || 70;
+                const top = target.getBoundingClientRect().top + window.scrollY - navH - 12;
+                scrollTo(Math.max(0, top));
+                history.replaceState(null, '', href);
+            });
+        }
+        return { init, scrollTo };
+    })();
+
+    // Connection status indicator
+    const ConnectionStatus = (() => {
+        function show(state) {
+            const el = document.getElementById('connStatus');
+            if (!el) return;
+            const label = el.querySelector('.label');
+            el.classList.remove('online', 'offline');
+            el.classList.add(state);
+            if (label) label.textContent = state === 'online' ? 'Back online' : 'Offline';
+            el.classList.add('is-visible');
+            clearTimeout(el._hideT);
+            if (state === 'online') {
+                el._hideT = setTimeout(() => el.classList.remove('is-visible'), 2400);
+            }
+        }
+        function init() {
+            window.addEventListener('online', () => show('online'));
+            window.addEventListener('offline', () => show('offline'));
+            // Don't show on initial load if already online
+            if (!navigator.onLine) show('offline');
+        }
+        return { init, show };
+    })();
+
+    // Floating Action Menu controller
+    const FabMenu = (() => {
+        function init() {
+            const menu = document.getElementById('fabMenu');
+            const trig = document.getElementById('fabTrigger');
+            if (!menu || !trig) return;
+            document.body.classList.add('has-fab');
+            function close() {
+                menu.classList.remove('is-open');
+                trig.setAttribute('aria-expanded', 'false');
+            }
+            function toggle() {
+                const open = menu.classList.toggle('is-open');
+                trig.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }
+            trig.addEventListener('click', e => { e.stopPropagation(); toggle(); });
+            document.addEventListener('click', e => { if (!menu.contains(e.target)) close(); });
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+            menu.querySelectorAll('.fab-action').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    const action = btn.dataset.fabAction;
+                    close();
+                    if (action === 'top') scrollToTop();
+                    else if (action === 'theme') toggleDark();
+                    else if (action === 'search' && typeof CommandPalette !== 'undefined') CommandPalette.open();
+                    else if (action === 'share') {
+                        if (navigator.share) {
+                            navigator.share({ title: document.title, url: location.href }).catch(() => {});
+                        } else if (navigator.clipboard) {
+                            navigator.clipboard.writeText(location.href).then(() => showToast('Link copied to clipboard!', 'success'));
+                        } else {
+                            showToast('Sharing not supported on this device', 'info');
+                        }
+                    }
+                });
+            });
+        }
+        return { init };
+    })();
+
+    // OLED dark mode (true black) — opt-in, persisted
+    function toggleOLED() {
+        const html = document.documentElement;
+        const on = html.hasAttribute('data-oled');
+        if (on) { html.removeAttribute('data-oled'); localStorage.setItem('oled', '0'); }
+        else { html.setAttribute('data-oled', '1'); localStorage.setItem('oled', '1'); }
+        // Sync any OLED toggle UI
+        document.querySelectorAll('.oled-toggle').forEach(b => b.classList.toggle('is-on', !on));
+        showToast(on ? 'OLED mode off' : 'OLED true-black mode on', 'info');
+    }
+    (function restoreOLED() {
+        if (localStorage.getItem('oled') === '1') document.documentElement.setAttribute('data-oled', '1');
+    })();
+
+    // Admin auto-refresh — periodic data pull while dashboard is visible
+    const AdminAutoRefresh = (() => {
+        const STORAGE_KEY = 'admin_autorefresh';
+        const INTERVAL_MS = 30000; // 30 seconds
+        let timer = null;
+        let isOn = false;
+        function start() {
+            stop();
+            isOn = true;
+            localStorage.setItem(STORAGE_KEY, '1');
+            timer = setInterval(async () => {
+                const panel = document.getElementById('adminPanel');
+                if (!panel || !panel.classList.contains('active')) return;
+                // Only refresh on the dashboard or orders view to avoid disrupting edits
+                const active = document.querySelector('.admin-sidebar-item.active');
+                const tab = active?.textContent || '';
+                if (!/dashboard|orders|notifications/i.test(tab)) return;
+                try {
+                    await Promise.all([fetchOrders(), fetchUsers ? fetchUsers() : Promise.resolve()]);
+                    if (typeof updateSidebarCounts === 'function') updateSidebarCounts();
+                    if (typeof NotificationCenter !== 'undefined') NotificationCenter.refresh();
+                } catch (e) { console.warn('Auto-refresh failed:', e); }
+            }, INTERVAL_MS);
+            syncUi();
+        }
+        function stop() {
+            isOn = false;
+            localStorage.setItem(STORAGE_KEY, '0');
+            if (timer) { clearInterval(timer); timer = null; }
+            syncUi();
+        }
+        function toggle() {
+            if (isOn) { stop(); showToast('Auto-refresh disabled', 'info'); }
+            else { start(); showToast('Auto-refresh enabled (every 30s)', 'success'); }
+        }
+        function syncUi() {
+            const pill = document.getElementById('autoRefreshPill');
+            const lbl = document.getElementById('autoRefreshLabel');
+            const btn = document.getElementById('autoRefreshBtn');
+            if (!pill) return;
+            pill.classList.toggle('is-on', isOn);
+            if (lbl) lbl.textContent = isOn ? 'Auto-refresh on \u00B7 every 30s' : 'Auto-refresh off';
+            if (btn) btn.textContent = isOn ? 'Turn off' : 'Turn on';
+        }
+        function restore() {
+            if (localStorage.getItem(STORAGE_KEY) === '1') start();
+        }
+        return { start, stop, toggle, syncUi, restore };
+    })();
+
+    // Notification center — derives from APP.orders + APP.users
+    const NotificationCenter = (() => {
+        const READ_KEY = 'admin_notif_read_ids';
+        function readSet() {
+            try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || '[]')); }
+            catch (_) { return new Set(); }
+        }
+        function saveSet(s) {
+            try { localStorage.setItem(READ_KEY, JSON.stringify(Array.from(s).slice(-200))); } catch (_) {}
+        }
+        function build() {
+            if (!(window.APP && Array.isArray(APP.orders))) return [];
+            const items = [];
+            APP.orders.slice(0, 12).forEach(o => {
+                const id = 'order-' + o.id;
+                const status = o.status || 'pending';
+                const icon = status === 'completed' ? '\u2705' : status === 'pending' ? '\u23F3' : status === 'failed' ? '\u274C' : '\u{1F4E6}';
+                items.push({
+                    id,
+                    icon,
+                    title: (o.profiles?.full_name || 'A user') + ' ' + (status === 'pending' ? 'submitted a payment' : status === 'completed' ? 'completed an order' : 'order ' + status),
+                    sub: (o.courses?.title || 'a course') + ' \u00B7 ' + Utils.formatCurrency(o.total_amount || o.amount || 0),
+                    time: o.created_at
+                });
+            });
+            (APP.users || []).slice(0, 6).forEach(u => {
+                items.push({
+                    id: 'user-' + u.id,
+                    icon: '\u{1F464}',
+                    title: ((u.first_name || '') + ' ' + (u.last_name || '')).trim() + ' joined',
+                    sub: 'New ' + (u.role || 'student'),
+                    time: u.created_at
+                });
+            });
+            return items.sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 20);
+        }
+        function refresh() {
+            const list = document.getElementById('notifList');
+            if (!list) return;
+            const items = build();
+            const read = readSet();
+            if (!items.length) { list.innerHTML = '<div class="notif-empty">No notifications yet</div>'; return; }
+            list.innerHTML = items.map(it => {
+                const isRead = read.has(it.id);
+                return '<div class="notif-row' + (isRead ? '' : ' unread') + '" data-id="' + Utils.escapeHtml(it.id) + '">'
+                    + '<span class="notif-icon">' + Utils.escapeHtml(it.icon) + '</span>'
+                    + '<div class="notif-body">' + Utils.escapeHtml(it.title) + '<div class="notif-time">' + Utils.escapeHtml(it.sub) + ' \u00B7 ' + Utils.formatDate(it.time) + '</div></div>'
+                    + '</div>';
+            }).join('');
+            list.querySelectorAll('.notif-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const id = row.dataset.id;
+                    const s = readSet(); s.add(id); saveSet(s);
+                    row.classList.remove('unread');
+                    updateBellBadge();
+                });
+            });
+            updateBellBadge();
+        }
+        function updateBellBadge() {
+            const btn = document.getElementById('adminBellBtn');
+            if (!btn) return;
+            const items = build();
+            const read = readSet();
+            const unread = items.filter(i => !read.has(i.id)).length;
+            const existing = btn.querySelector('.bell-dot');
+            if (existing) existing.remove();
+            if (unread) {
+                const dot = document.createElement('span');
+                dot.className = 'bell-dot';
+                dot.textContent = unread > 99 ? '99+' : String(unread);
+                btn.appendChild(dot);
+            }
+        }
+        function toggle() {
+            const el = document.getElementById('notifCenter');
+            if (!el) return;
+            const open = el.classList.toggle('is-open');
+            if (open) refresh();
+        }
+        function close() {
+            const el = document.getElementById('notifCenter');
+            if (el) el.classList.remove('is-open');
+        }
+        function markAllRead() {
+            const items = build();
+            const s = readSet(); items.forEach(i => s.add(i.id)); saveSet(s);
+            refresh();
+            showToast('All notifications marked as read', 'success');
+        }
+        // Close on outside click
+        document.addEventListener('click', e => {
+            const el = document.getElementById('notifCenter');
+            const btn = document.getElementById('adminBellBtn');
+            if (!el || !btn) return;
+            if (!el.contains(e.target) && !btn.contains(e.target)) close();
+        });
+        return { toggle, close, refresh, markAllRead };
+    })();
+
+    // Boot all ultimate modules
+    document.addEventListener('DOMContentLoaded', () => {
+        Magnetic.init();
+        Tilt.init();
+        Ripple.attach();
+        LazyImg.init();
+        NavbarScroll.init();
+        SmoothScroll.init();
+        ConnectionStatus.init();
+        FabMenu.init();
+        AdminAutoRefresh.restore();
+        // Restore OLED toggle visual state
+        if (document.documentElement.hasAttribute('data-oled')) {
+            document.querySelectorAll('.oled-toggle').forEach(b => b.classList.add('is-on'));
+        }
+    });
+
     function toggleAdminSidebar() { const sb=document.getElementById('adminSidebar'); const ov=document.getElementById('adminSidebarOverlay'); sb.classList.toggle('mobile-open'); ov.classList.toggle('active'); }
     function toggleFaq(el) { const item = el.parentElement; item.classList.toggle('active'); el.setAttribute('aria-expanded', item.classList.contains('active')); }
     function toggleUserMenu() {
@@ -3081,7 +3783,7 @@
             else if(APP.currentUser) btn='<button class="btn btn-ghost" style="width:100%;justify-content:center;" disabled>🔜 Coming Soon</button>';
             else btn='<button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="openModal(\'login\')">Login to Buy</button>';
 
-            return '<div class="pricing-card'+(p.is_popular?' popular':'')+'">'+
+            return '<div class="pricing-card tilt-card'+(p.is_popular?' popular':'')+'">'+
                 (enrolled||approvedOrder?'<div style="position:absolute;top:12px;right:12px;background:var(--success);color:#fff;padding:0.2rem 0.6rem;border-radius:6px;font-size:0.7rem;font-weight:700;">✓ ENROLLED</div>':'')+
                 '<span class="pricing-badge">⭐ Most Popular</span>'+
                 '<h3>'+Utils.escapeHtml(p.title)+'</h3>'+
@@ -3096,6 +3798,8 @@
         grid.setAttribute('aria-busy', 'false');
         grid.classList.add('reveal-stagger');
         if (typeof Reveals !== 'undefined') Reveals.init(grid.parentElement || grid);
+        if (typeof Tilt !== 'undefined') Tilt.init(grid);
+        if (typeof Magnetic !== 'undefined') Magnetic.init(grid);
     }
 
     function buyPlan(planIdx, courseId) {
@@ -3381,7 +4085,7 @@
             const price=enrolled||approvedOrder?'<span style="color:var(--success)">Purchased</span>':pendingOrder?'<span style="color:var(--warning)">Pending Approval</span>':Utils.formatCurrency(c.price)+(c.original_price&&c.original_price>c.price?'<span style="text-decoration:line-through;color:var(--gray-600);font-size:0.85rem;margin-left:0.5rem;">'+Utils.formatCurrency(c.original_price)+'</span>':'');
             const pdfLink=c.pdf_url?Utils.escapeHtml(c.pdf_url):'';
             const btn=enrolled||approvedOrder?(pdfLink?'<button class="btn btn-success btn-sm" onclick="openSecureViewer(\''+c.id+'\',\''+pdfLink.replace(/\x27/g,"\\\x27")+'\',\''+t.replace(/\x27/g,"\\\x27")+'\')">&#x1F512; Open Course</button>':'<button class="btn btn-success btn-sm" disabled>\u2713 Enrolled</button>'):pendingOrder?'<button class="btn btn-ghost btn-sm" disabled>&#x23F3; Awaiting</button>':'<button class="btn btn-primary" onclick="enrollCourse(\''+c.id+'\',\''+t.replace(/'/g,"\\'")+'\','+c.price+')">Buy</button>';
-            return '<div class="course-card"><div class="admin-actions"><button class="btn btn-warning btn-sm" onclick="editCourse(\''+c.id+'\')">Edit</button><button class="btn btn-danger btn-sm" onclick="deleteCourse(\''+c.id+'\')">Del</button></div>'+(enrolled||approvedOrder?'<div style="position:absolute;top:12px;left:12px;background:var(--success);color:#fff;padding:0.2rem 0.5rem;border-radius:6px;font-size:0.7rem;font-weight:700;z-index:4;">\u2713 ENROLLED</div>':pendingOrder?'<div style="position:absolute;top:12px;left:12px;background:var(--warning);color:#fff;padding:0.2rem 0.5rem;border-radius:6px;font-size:0.7rem;font-weight:700;z-index:4;">&#x23F3; PENDING</div>':'')+'<div class="course-img '+cat+'">'+imgH+(badge?'<span class="course-badge">'+badge+'</span>':'')+'</div><div class="course-body"><h3>'+t+'</h3><p>'+d+'</p><div class="course-footer"><span class="course-price">'+price+'</span><div class="course-actions">'+btn+'</div></div></div></div>';
+            return '<div class="course-card tilt-card"><div class="admin-actions"><button class="btn btn-warning btn-sm" onclick="editCourse(\''+c.id+'\')">Edit</button><button class="btn btn-danger btn-sm" onclick="deleteCourse(\''+c.id+'\')">Del</button></div>'+(enrolled||approvedOrder?'<div style="position:absolute;top:12px;left:12px;background:var(--success);color:#fff;padding:0.2rem 0.5rem;border-radius:6px;font-size:0.7rem;font-weight:700;z-index:4;">\u2713 ENROLLED</div>':pendingOrder?'<div style="position:absolute;top:12px;left:12px;background:var(--warning);color:#fff;padding:0.2rem 0.5rem;border-radius:6px;font-size:0.7rem;font-weight:700;z-index:4;">&#x23F3; PENDING</div>':'')+'<div class="course-img '+cat+'">'+imgH+(badge?'<span class="course-badge">'+badge+'</span>':'')+'</div><div class="course-body"><h3>'+t+'</h3><p>'+d+'</p><div class="course-footer"><span class="course-price">'+price+'</span><div class="course-actions">'+btn+'</div></div></div></div>';
         }).join('');
         // Show/hide Load More
         const lm=document.getElementById('loadMoreWrap'); if(lm) lm.style.display=hasMore?'block':'none';
@@ -3389,6 +4093,9 @@
         // Apply reveal-on-scroll to new cards
         grid.classList.add('reveal-stagger');
         if (typeof Reveals !== 'undefined') Reveals.init(grid.parentElement || grid);
+        // Ultimate elite: 3D tilt + lazy images
+        if (typeof Tilt !== 'undefined') Tilt.init(grid);
+        if (typeof LazyImg !== 'undefined') LazyImg.init(grid);
     }
     async function openAdminPanel() {
         if(!APP.currentUser||APP.currentUser.role!=='admin'){showToast('Access denied','error');return;}
@@ -3503,6 +4210,16 @@
                 <button class="btn btn-sm" onclick="refreshAdminData()">🔄 Refresh</button>
                 <button class="btn btn-sm" onclick="exportData()">📥 Export</button>
             </div>
+            <div style="margin-top:1rem;display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
+                <div class="auto-refresh-pill" id="autoRefreshPill"><span class="ar-dot"></span><span id="autoRefreshLabel">Auto-refresh off</span><button type="button" onclick="AdminAutoRefresh.toggle()" id="autoRefreshBtn">Turn on</button></div>
+                <div style="position:relative;">
+                    <button type="button" class="admin-bell" onclick="NotificationCenter.toggle()" aria-label="Notifications" id="adminBellBtn">&#x1F514;${pendingCount?'<span class="bell-dot">'+pendingCount+'</span>':''}</button>
+                    <div class="notif-center" id="notifCenter" role="dialog" aria-label="Notifications">
+                        <div class="notif-center-head"><h4>Notifications</h4><button type="button" onclick="NotificationCenter.markAllRead()">Mark all read</button></div>
+                        <div class="notif-list" id="notifList"></div>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="admin-stats reveal-stagger">
             <div class="admin-stat-card">
@@ -3568,6 +4285,8 @@
                 Counters.animate(el, to, { duration: 850, prefix });
             });
             if (typeof Reveals !== 'undefined') Reveals.init(document.getElementById('adminContent'));
+            if (typeof AdminAutoRefresh !== 'undefined') AdminAutoRefresh.syncUi();
+            if (typeof NotificationCenter !== 'undefined') NotificationCenter.refresh();
         }, 30);
     }
     async function refreshAdminData() { showToast('Refreshing...','warning'); await Promise.all([fetchCourses(),fetchUsers(),fetchOrders()]); updateSidebarCounts(); const active=document.querySelector('.admin-sidebar-item.active'); const tab=active?.textContent?.includes('Dashboard')?'dashboard':active?.textContent?.includes('Courses')?'courses':active?.textContent?.includes('Users')?'users':active?.textContent?.includes('Orders')?'orders':'courses'; switchAdminTab(tab,active); showToast('Data refreshed!'); }

@@ -1,7 +1,7 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.2.0 — Elite UX pack v2: command palette, skeletons, sparklines, confetti,
-   admin keyboard shortcuts. Cache name bumped to force shell refresh for all clients. */
-const VERSION = 'hiq-v1.2.0';
+   v1.3.0 — Ultimate Elite pack v3: glass navbar, magnetic, 3D tilt, ripple,
+   FAB menu, OLED mode, notif center, auto-refresh. Cache bumped to force refresh. */
+const VERSION = 'hiq-v1.3.0';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
