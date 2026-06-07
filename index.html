@@ -40,8 +40,7 @@
       "name":"HealthIQ",
       "url":"https://ipandeyinfo.github.io/HealthIQ/",
       "logo":"https://ipandeyinfo.github.io/HealthIQ/og-image.png",
-      "description":"Premium BHMS & MD Homoeopathy notes by a Gold Medalist.",
-    "sameAs":["https://wa.me/919999321875"]
+      "description":"Premium BHMS & MD Homoeopathy notes by a Gold Medalist."
     }
     </script>
     <style>
@@ -3538,7 +3537,14 @@
             <div><h4>HealthIQ</h4><p>Premium BHMS &amp; MD Homoeopathy notes crafted by a Gold Medalist for aspiring doctors and homoeopathic practitioners.</p></div>
             <div><h4>Quick Links</h4><a href="#courses">Courses</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
             <div><h4>Legal</h4><a href="#" data-legal="terms">Terms of Service</a><a href="#" data-legal="privacy">Privacy Policy</a><a href="#" data-legal="refund">Refund Policy</a></div>
-            <div><h4>Contact</h4><a href="mailto:support@healthiq.in" id="footerEmail">support@healthiq.in</a><a href="https://wa.me/919999321875" id="footerWhatsapp">WhatsApp: +91 99993 21875</a></div>
+            <div><h4>Contact</h4>
+                <!-- v1.6.11 — Contact links are hidden until loadDynamicContent()
+                     populates them from APP.settings (admin Settings → Contact &
+                     Social). No hardcoded numbers/emails live in the HTML anymore;
+                     the admin's saved values are the single source of truth. -->
+                <a href="#" id="footerEmail" hidden></a>
+                <a href="#" id="footerWhatsapp" target="_blank" rel="noopener" hidden></a>
+            </div>
         </div>
         <div class="footer-bottom"><p>&copy; 2026 HealthIQ. All rights reserved.</p></div>
     </footer>
@@ -4639,21 +4645,24 @@
                     else if (action === 'theme') toggleDark();
                     else if (action === 'search' && typeof CommandPalette !== 'undefined') CommandPalette.open();
                     else if (action === 'whatsapp') {
-                        // v1.6.10 — single source of truth for the WhatsApp number.
-                        // Priority chain (most authoritative first):
-                        //   1. APP.settings.whatsapp_number — live admin-saved value
-                        //      from the Settings tab (mirrors what the footer shows).
-                        //   2. APP._waNumber — cached fast-path written by
-                        //      loadDynamicContent() after the settings fetch.
-                        //   3. DEFAULT_SETTINGS.whatsapp_number — same default the
-                        //      rest of the app uses if Supabase is unreachable.
-                        //   4. Hardcoded fallback (matches DEFAULT_SETTINGS exactly).
-                        // Always strip non-digits so wa.me/<num> stays clean.
+                        // v1.6.11 — Admin Settings is the SINGLE source of truth.
+                        // Resolution order (no more inline literals):
+                        //   1. APP.settings.whatsapp_number — live admin save
+                        //   2. APP._waNumber — cached fast-path from loadDynamicContent
+                        //   3. DEFAULT_SETTINGS.whatsapp_number — the ONE bootstrap
+                        //      default that lives in code (single source of fallback).
+                        // If all three are empty (admin cleared the field & DB still
+                        // loading), show a friendly toast instead of opening a
+                        // wrong/random number. Strips non-digits defensively.
                         const raw = (window.APP && APP.settings && APP.settings.whatsapp_number)
                             || (window.APP && APP._waNumber)
                             || (typeof DEFAULT_SETTINGS !== 'undefined' && DEFAULT_SETTINGS.whatsapp_number)
-                            || '919999321875';
+                            || '';
                         const num = String(raw).replace(/\D/g, '');
+                        if (!num) {
+                            showToast('WhatsApp contact is being set up. Please try again in a moment or use the contact email.', 'info');
+                            return;
+                        }
                         try {
                             window.open('https://wa.me/' + num, '_blank', 'noopener,noreferrer');
                         } catch (err) {
@@ -5029,7 +5038,14 @@
     // ===== STATE =====
     const APP = { currentUser: null, userProfile: null, courses: [], users: [], orders: [], myOrders: [], enrollments: [], myEnrollments: [], settings: {} };
 
-    // Default settings (fallback if DB has none)
+    // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
+    // v1.6.11: every UI element (footer, FAB, hero, stats, pricing, etc.)
+    // reads admin Settings → DEFAULT_SETTINGS only. NO other file or code
+    // path should hardcode contact info or copy. The admin can override
+    // any of these via the Settings tab; if Supabase is unreachable on
+    // first load, these values keep the site functional. If the admin
+    // clears a contact field, downstream UI hides cleanly (footer links
+    // get [hidden]), no fake placeholder is ever shown to users.
     const DEFAULT_SETTINGS = {
         upi_id: 'thehealthiqinfo@oksbi',
         hero_badge: '?? By BHMS Gold Medalist | Trusted by 100+ Student',
@@ -5114,14 +5130,45 @@
         // Courses section
         const ct=document.getElementById('coursesTitle'); if(ct) ct.textContent=s.courses_title||DEFAULT_SETTINGS.courses_title;
         const cs=document.getElementById('coursesSubtitle'); if(cs) cs.textContent=s.courses_subtitle||DEFAULT_SETTINGS.courses_subtitle;
-        // WhatsApp & Contact
-    const waNumRaw=s.whatsapp_number||DEFAULT_SETTINGS.whatsapp_number;
-    const waNum=String(waNumRaw||'').replace(/\D/g,'');
-        const email=s.contact_email||DEFAULT_SETTINGS.contact_email;
-    // Stash WhatsApp number globally so the FAB "WhatsApp" action picks up admin changes live.
-    APP._waNumber = waNum;
-        const fe=document.getElementById('footerEmail'); if(fe){fe.href='mailto:'+email; fe.textContent=email;}
-    const fw=document.getElementById('footerWhatsapp'); if(fw){fw.href='https://wa.me/'+waNum; fw.textContent='WhatsApp: +'+waNum.slice(0,2)+' '+waNum.slice(2,7)+' '+waNum.slice(7);}
+        // WhatsApp & Contact — v1.6.11: admin Settings is the single source of truth.
+        // Footer links are [hidden] in the HTML; we only un-hide + populate them
+        // when there's a real value. If the admin clears a field, the link
+        // disappears from the footer cleanly (no fake placeholder shown).
+        const waNumRaw = s.whatsapp_number || DEFAULT_SETTINGS.whatsapp_number || '';
+        const waNum = String(waNumRaw).replace(/\D/g, '');
+        const email = (s.contact_email || DEFAULT_SETTINGS.contact_email || '').trim();
+        // Stash WhatsApp number globally so the FAB "WhatsApp" action picks up admin changes live.
+        APP._waNumber = waNum;
+        // Footer email
+        const fe = document.getElementById('footerEmail');
+        if (fe) {
+            if (email) {
+                fe.href = 'mailto:' + email;
+                fe.textContent = email;
+                fe.hidden = false;
+            } else {
+                fe.removeAttribute('href');
+                fe.textContent = '';
+                fe.hidden = true;
+            }
+        }
+        // Footer WhatsApp — pretty-format the number for India (+91 XXXXX XXXXX) when 12 digits,
+        // otherwise just show the +<digits>. Hide if no number set.
+        const fw = document.getElementById('footerWhatsapp');
+        if (fw) {
+            if (waNum) {
+                fw.href = 'https://wa.me/' + waNum;
+                const pretty = (waNum.length === 12)
+                    ? ('+' + waNum.slice(0, 2) + ' ' + waNum.slice(2, 7) + ' ' + waNum.slice(7))
+                    : ('+' + waNum);
+                fw.textContent = 'WhatsApp: ' + pretty;
+                fw.hidden = false;
+            } else {
+                fw.removeAttribute('href');
+                fw.textContent = '';
+                fw.hidden = true;
+            }
+        }
         // Render pricing plans
         renderPricingPlans();
         // Render testimonials & FAQ from settings

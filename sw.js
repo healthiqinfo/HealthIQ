@@ -1,17 +1,19 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.10 — FAB WhatsApp now syncs from admin Settings tab:
-   * Bug: clicking the WhatsApp button in the FAB cluster opened
-     wa.me/919876543210 (a stale placeholder), ignoring the number
-     the admin saved in Settings (which the footer correctly used).
-   * Fix: FAB WhatsApp action now reads a 4-level priority chain at
-     click time — APP.settings.whatsapp_number (live admin save) ->
-     APP._waNumber (cached fast-path) -> DEFAULT_SETTINGS.whatsapp_number
-     (offline-safe default) -> hardcoded fallback. Strips non-digits
-     so wa.me URL is always clean.
-   * Also fixed the HTML footer link's hardcoded placeholder to the
-     real default (919999321875) so no-JS / slow-load users see a
-     working number instead of the random placeholder. */
-const VERSION = 'hiq-v1.6.10';
+   v1.6.11 — Contact info fully driven by admin Settings (no more
+   duplicated hardcoded numbers across the codebase):
+   * Removed `sameAs: [wa.me/919999321875]` from the JSON-LD SEO block —
+     stale SEO data is worse than no SEO data.
+   * Footer Contact links now render empty with [hidden] in HTML and are
+     populated by loadDynamicContent() from APP.settings only. No more
+     stale "+91 99993 21875" flashing before JS hydrates.
+   * FAB WhatsApp action's priority chain no longer has an inline
+     '919999321875' fallback — it now ends at DEFAULT_SETTINGS, the SINGLE
+     bootstrap-fallback location in the codebase. If everything is empty,
+     a friendly toast appears instead of opening a wrong number.
+   * loadDynamicContent() now show/hides footer email + WhatsApp links
+     based on whether the admin has set a value — clearing the field
+     hides the link cleanly. */
+const VERSION = 'hiq-v1.6.11';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
