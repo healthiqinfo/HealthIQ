@@ -1,37 +1,35 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.14 — Live Database Diagnostic Panel in admin Settings tab.
-   * Problem: admin reported the WhatsApp number was "still showing the
-     default 919999999999 even after saving from admin panel". v1.6.13
-     added verified-save (so the save itself can't fail silently), but
-     the admin had no way to SEE what was actually in the database
-     versus the local cache versus the hardcoded DEFAULT_SETTINGS
-     fallback. Every "it's not saving" report has been impossible to
-     diagnose without dropping into devtools.
+   v1.6.15 — Smarter source classification in the Settings diagnostic.
+   * Problem: the v1.6.14 diagnostic flagged settings whose DB row exists
+     but with an empty value (e.g. hero_title = '') as 🟡 MISMATCH —
+     misleading, because fetchSettings() intentionally treats empty
+     values as "fall back to default". The admin saw a scary amber
+     warning for what is actually correct behaviour.
    * Fix:
-     1. New diagnoseSettings() function runs a fresh SELECT on
-        site_settings (no cache), attempts a write+read test, and
-        builds a full per-key comparison: DB value vs APP.settings
-        cache vs DEFAULT_SETTINGS fallback vs what's actually shown
-        to users.
-     2. New diagnostic panel at the TOP of the admin Settings tab,
-        auto-runs the moment the tab opens and after every save. Shows
-        colour-coded rows (🟢 DB drives UI, 🟡 cache mismatch,
-        🔴 default fallback being used because no DB row exists).
-        Explicit test-write result line so admin instantly sees if
-        RLS is silently blocking writes.
-     3. New "Force Refresh from DB" button that re-fetches and
-        re-renders the form — useful when admin suspects stale cache.
-     4. Banner at the top of the diagnostic shows the count of rows
-        in site_settings — if it's 0, a loud red warning explains
-        every UI value is coming from defaults.
-   * Why this matters: instead of guessing whether a save persisted,
-     the admin gets an immediate visual confirmation panel showing
-     EXACTLY what the database has and EXACTLY what users see.
+     1. Source classification now distinguishes two flavours of default:
+          🟠 DEFAULT (DB empty)  — row exists but value is '' → UI falls
+                                    back to default (intentional, not a fault)
+          🔴 DEFAULT (no row)    — no row at all → UI falls back to default
+                                    (probably means the section was never
+                                    saved, more likely to be unintentional)
+        🟡 MISMATCH is now ONLY raised when DB has a NON-EMPTY value
+        that differs from the cached value (the genuine stale-tab case).
+     2. New informational banner appears when settings are 🟠 — it's not
+        flagged as an issue, just a heads-up listing the affected keys
+        and explaining the one-click fix (fill the field, save again).
+     3. Success banner now reports "X of Y tracked keys sourced from
+        database" so the admin can confirm at a glance.
+   * Why this matters: every prior "is my save working?" question now
+     gets a clear visual answer without false-positive warnings.
+   Carries forward from v1.6.14:
+   * Live database diagnostic panel at top of Settings tab.
+   * Auto-runs on tab open and after every save.
+   * Test-write probe catches silent RLS blocks.
    Carries forward from v1.6.13:
    * Verified-save via .upsert(...).select() on every settings write.
    * Detailed Supabase error formatting (RLS / missing-table patterns).
    * WhatsApp digits-only normalisation + length validation. */
-const VERSION = 'hiq-v1.6.14';
+const VERSION = 'hiq-v1.6.15';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

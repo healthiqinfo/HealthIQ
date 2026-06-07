@@ -5237,11 +5237,27 @@
             const defVal = DEFAULT_SETTINGS[k] || null;
             // What the UI actually renders (mirrors applySettings logic: empty → default)
             const rendered = cacheVal || defVal || '';
-            let source = 'default';
-            if (cacheVal && cacheVal === dbVal) source = 'database';
-            else if (cacheVal && cacheVal !== dbVal && dbVal !== null) source = 'cache-mismatch';
-            else if (cacheVal && dbVal === null) source = 'cache-only';
-            else if (!cacheVal && dbVal) source = 'database';
+
+            // v1.6.15 — Smarter source classification.
+            // Treat an EMPTY string in DB ('') the same as "no row" for the
+            // purpose of deciding what the user sees — because fetchSettings()
+            // backfills empty values with defaults. The previous logic flagged
+            // this as a misleading 🟡 MISMATCH; now it's correctly classified
+            // as 🟠 "DEFAULT (DB empty)" — intentional fallback, not a bug.
+            const dbHasValue = dbVal !== null && dbVal !== '';
+            let source;
+            if (dbHasValue && cacheVal === dbVal) {
+                source = 'database';                  // 🟢 DB drives the UI
+            } else if (dbHasValue && cacheVal && cacheVal !== dbVal) {
+                source = 'cache-mismatch';            // 🟡 stale tab, refresh needed
+            } else if (!dbHasValue && cacheVal) {
+                // DB is missing or has empty value, UI shows default backfill
+                source = (dbVal === '') ? 'default-empty-row' : 'default-no-row';
+            } else if (dbHasValue && !cacheVal) {
+                source = 'database';                  // unusual: DB set, cache not yet hydrated
+            } else {
+                source = 'default-no-row';            // neither DB nor cache → pure default
+            }
 
             report.keys[k] = {
                 db: dbVal,            // null if no row
@@ -5251,11 +5267,17 @@
                 source: source
             };
 
-            // Flag issues for the WhatsApp number specifically
+            // Flag issues for the WhatsApp number specifically — but only for
+            // genuine problems (missing row or true cache/DB mismatch). An
+            // empty-string DB value falls back to DEFAULT cleanly, which is
+            // intentional behaviour, not an issue.
             if (k === 'whatsapp_number') {
                 if (dbVal === null) {
                     report.summary.ok = false;
                     report.summary.issues.push('No `whatsapp_number` row in database — site is using DEFAULT fallback (' + (defVal || 'empty') + ').');
+                } else if (dbVal === '') {
+                    report.summary.ok = false;
+                    report.summary.issues.push('`whatsapp_number` DB row exists but is empty — site is showing the DEFAULT (' + (defVal || 'none') + '). Type a number in the Contact card below and save to fix.');
                 } else if (dbVal !== cacheVal) {
                     report.summary.ok = false;
                     report.summary.issues.push('whatsapp_number DB value ("' + dbVal + '") differs from cached value ("' + (cacheVal || 'empty') + '"). Refresh page.');
@@ -6802,6 +6824,12 @@
         const esc = Utils.escapeHtml;
         let html = '';
 
+        // v1.6.15 — Count source distribution so the banner & footer can show
+        // a meaningful summary without making "DB row empty (default shown)"
+        // feel like a fault — it's intentional fallback behaviour.
+        const sourceCounts = { database: 0, 'cache-mismatch': 0, 'default-empty-row': 0, 'default-no-row': 0 };
+        Object.values(r.keys).forEach(row => { sourceCounts[row.source] = (sourceCounts[row.source] || 0) + 1; });
+
         // ----- Top-level status banner -----
         if (!r.connection) {
             html += `<div style="padding:0.9rem 1rem;background:#fee2e2;color:#991b1b;border-radius:8px;font-weight:600;margin-bottom:0.75rem;">
@@ -6813,7 +6841,10 @@
             </div>`;
         } else if (r.summary.ok) {
             html += `<div style="padding:0.9rem 1rem;background:#d1fae5;color:#065f46;border-radius:8px;font-weight:600;margin-bottom:0.75rem;">
-                ✅ All systems operational — DB is the source of truth.
+                ✅ All systems operational — your admin saves are persisting and driving the live site.
+                <span style="display:block;font-weight:400;font-size:0.82rem;margin-top:0.25rem;">
+                    ${sourceCounts.database} of ${Object.keys(r.keys).length} tracked keys are sourced from the database.
+                </span>
             </div>`;
         } else {
             html += `<div style="padding:0.9rem 1rem;background:#fef3c7;color:#92400e;border-radius:8px;font-weight:600;margin-bottom:0.75rem;">
@@ -6829,6 +6860,21 @@
                     ${r.summary.issues.map(i => '<li>' + esc(i) + '</li>').join('')}
                 </ul>
             </details>`;
+        }
+
+        // v1.6.15 — Friendly INFO note when keys are intentionally falling
+        // back to defaults (DB row exists but empty). This is normal — the
+        // admin probably left a field blank when saving a related card.
+        // Not flagged as an error, just a heads-up with the fix.
+        if (sourceCounts['default-empty-row'] > 0) {
+            const emptyKeys = Object.keys(r.keys).filter(k => r.keys[k].source === 'default-empty-row');
+            html += `<div style="padding:0.7rem 1rem;background:#fff7ed;color:#9a3412;border-radius:8px;font-size:0.85rem;margin-bottom:0.75rem;border-left:3px solid #f97316;">
+                💡 <strong>${emptyKeys.length} setting${emptyKeys.length === 1 ? '' : 's'} stored as empty in DB</strong> — site shows the default value instead.
+                <span style="display:block;margin-top:0.25rem;font-size:0.8rem;">
+                    Affected: <code>${emptyKeys.join('</code>, <code>')}</code>.
+                    To replace the default with your own text, fill in the field in the relevant card below and click its Save button.
+                </span>
+            </div>`;
         }
 
         // ----- Test-write result -----
@@ -6873,16 +6919,21 @@
                 : '<span style="word-break:break-all;">' + esc(String(v).length > 60 ? String(v).slice(0, 60) + '…' : v) + '</span>';
             let badge = '';
             let rowBg = '';
+            // v1.6.15 — Source badges:
+            //   🟢 DATABASE              DB drives UI (the happy path)
+            //   🟡 MISMATCH              DB and cache disagree on a non-empty value → refresh tab
+            //   🟠 DEFAULT (DB empty)    DB row exists but value is empty, UI shows default backfill
+            //   🔴 DEFAULT (no row)      No DB row at all, UI shows default backfill
             if (row.source === 'database') {
                 badge = '<span style="background:#d1fae5;color:#065f46;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;font-size:0.7rem;">🟢 DATABASE</span>';
             } else if (row.source === 'cache-mismatch') {
                 badge = '<span style="background:#fef3c7;color:#92400e;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;font-size:0.7rem;">🟡 MISMATCH</span>';
                 rowBg = 'background:#fffbeb;';
-            } else if (row.source === 'cache-only') {
-                badge = '<span style="background:#fef3c7;color:#92400e;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;font-size:0.7rem;">🟡 CACHE ONLY</span>';
-                rowBg = 'background:#fffbeb;';
-            } else {
-                badge = '<span style="background:#fee2e2;color:#991b1b;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;font-size:0.7rem;">🔴 DEFAULT</span>';
+            } else if (row.source === 'default-empty-row') {
+                badge = '<span style="background:#ffedd5;color:#9a3412;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;font-size:0.7rem;" title="DB row exists but is empty — UI shows default. Type a value & save to fix.">� DEFAULT (DB empty)</span>';
+                rowBg = 'background:#fff7ed;';
+            } else { // 'default-no-row' or anything unknown
+                badge = '<span style="background:#fee2e2;color:#991b1b;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;font-size:0.7rem;" title="No DB row at all — UI is showing DEFAULT_SETTINGS fallback. Save from the relevant card below to create the row.">🔴 DEFAULT (no row)</span>';
                 rowBg = 'background:#fef2f2;';
             }
             html += `<tr style="${rowBg}border-bottom:1px solid var(--gray-100,#f3f4f6);">
@@ -6898,7 +6949,7 @@
 
         // ----- Legend + timestamp -----
         html += `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem;font-size:0.75rem;color:var(--gray-500,#6b7280);">
-            <span>🟢 DB drives UI · 🟡 cache differs from DB · 🔴 default fallback (no DB row)</span>
+            <span>🟢 DB drives UI · 🟡 cache differs from DB · � DB row empty (default shown) · 🔴 no DB row (default shown)</span>
             <span>Last checked: ${new Date(r.timestamp).toLocaleTimeString()}</span>
         </div>`;
 
