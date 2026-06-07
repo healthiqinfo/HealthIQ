@@ -2963,6 +2963,34 @@
         }
 
         /* ==================================================================
+           ===== MOBILE POLISH v1.6.6 — go-live fixes =====
+           * Pricing grid: force 1-column on phones regardless of the inline
+             grid-template-columns the JS sets per plan count. The inline
+             style was making 2 plans render as two half-width cards.
+           * Hamburger + mobile-nav drawer retired (header now keeps all
+             controls visible on phone). Hide leftover .hamburger styles.
+           ================================================================== */
+
+        /* Pricing — defensive mobile stack */
+        @media (max-width: 768px) {
+            .pricing-grid {
+                grid-template-columns: 1fr !important;
+                justify-content: stretch !important;
+                gap: 1.25rem !important;
+                padding: 0 0.25rem;
+            }
+            .pricing-card {
+                max-width: 100%;
+                padding: 2rem 1.5rem !important;
+            }
+        }
+
+        /* Hamburger fully retired — keep the rule so any stray .hamburger
+           element (none should exist anymore) never reappears. */
+        .hamburger { display: none !important; }
+        .mobile-nav, .mobile-nav-backdrop { display: none !important; }
+
+        /* ==================================================================
            ===== USER MENU v6 — PREMIUM POLISH =====
            Modern, refined dropdown: spring-in open animation, glass surface,
            bigger gradient avatar with status ring, premium typography
@@ -3232,7 +3260,7 @@
     <a href="#main" class="skip-link">Skip to content</a>
     <div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
     <div class="offline-banner" id="offlineBanner">⚠️ Connection failed. Some features may not work. <button onclick="location.reload()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;margin-left:0.5rem;font-weight:600;">Retry</button></div>
-    <div class="mobile-nav-backdrop" id="mobileNavBackdrop" onclick="toggleMobile()" aria-hidden="true"></div>
+    <div class="mobile-nav-backdrop" id="mobileNavBackdrop" aria-hidden="true" hidden></div>
     <div class="toast-container" id="toastContainer" role="status" aria-live="polite" aria-atomic="false"></div>
     <div class="confetti-root" id="confettiRoot" aria-hidden="true"></div>
 
@@ -3306,24 +3334,14 @@
                         </div>
                     </div>
                 </div>
-                <button class="hamburger" onclick="toggleMobile()" aria-label="Menu">&#9776;</button>
             </div>
         </div>
     </nav>
-    <div class="mobile-nav" id="mobileNav">
-        <a href="#courses" data-mobile-nav-link>Courses</a>
-        <a href="#pricing" data-mobile-nav-link>Pricing</a>
-        <a href="#testimonials" data-mobile-nav-link>Reviews</a>
-        <a href="#faq" data-mobile-nav-link>FAQ</a>
-        <div class="mobile-auth" id="mobileAuthButtons">
-            <button class="btn btn-primary" onclick="openModal('login');toggleMobile()">Login</button>
-        </div>
-        <div class="mobile-auth" id="mobileUserButtons" style="display:none;">
-            <button class="btn btn-primary" onclick="openDashboard();toggleMobile()">📊 My Dashboard</button>
-            <button class="btn btn-ghost" onclick="showMyCourses();toggleMobile()">📚 My Courses</button>
-            <button class="btn btn-ghost" onclick="openAdminPanel();toggleMobile()" id="mobileAdminBtn" style="display:none;">📊 Admin</button>
-            <button class="btn btn-danger btn-sm" onclick="logout();toggleMobile()">Logout</button>
-        </div>
+    <div class="mobile-nav" id="mobileNav" hidden aria-hidden="true">
+        <!-- Mobile nav drawer retired in v1.6.6: hamburger removed from
+             header, so this drawer is no longer reachable. Element kept
+             with [hidden] so any code still querying #mobileNav doesn't
+             throw — display:none is enforced by [hidden]. -->
     </div>
 
     <main id="main" tabindex="-1">
@@ -3839,15 +3857,12 @@
         }
     }
     function toggleMobile(forceState) {
-        const nav = document.getElementById('mobileNav');
-        const bd = document.getElementById('mobileNavBackdrop');
-        const ham = document.querySelector('.hamburger');
-        if (!nav) return;
-        const willOpen = typeof forceState === 'boolean' ? forceState : !nav.classList.contains('active');
-        nav.classList.toggle('active', willOpen);
-        if (bd) bd.classList.toggle('active', willOpen);
-        if (ham) { ham.classList.toggle('active', willOpen); ham.setAttribute('aria-expanded', willOpen ? 'true' : 'false'); }
-        document.body.style.overflow = willOpen ? 'hidden' : '';
+        // v1.6.6 — Mobile hamburger drawer retired. The header now keeps
+        // all controls visible on mobile (logo, search, theme cycle, auth
+        // button + user menu) so there's nothing to open. Kept as a
+        // defensive no-op so legacy inline onclick="...;toggleMobile()"
+        // bindings + keyboard handlers don't throw on click.
+        return;
     }
     function togglePassword(btn) {
         if (!btn) return;
@@ -5048,13 +5063,17 @@
     function renderPricingPlans() {
         const grid = document.getElementById('pricingGrid'); if (!grid) return;
         const plans = getPublishedPlans();
-        // Set responsive grid columns based on plan count (1, 2, 3+)
+        // Set responsive grid columns based on plan count (1, 2, 3+).
+        // The min(100%, Npx) trick guarantees the cards STACK on narrow
+        // viewports even when count is fixed — fixes the mobile "two
+        // half-cards side-by-side" bug. On desktop the cards still lay
+        // out side-by-side because min() resolves to the px value.
         const n = plans.length;
         grid.style.gridTemplateColumns = n === 1
-            ? 'minmax(280px, 420px)'
+            ? 'minmax(min(100%, 280px), 420px)'
             : n === 2
-                ? 'repeat(2, minmax(260px, 1fr))'
-                : 'repeat(auto-fit, minmax(260px, 1fr))';
+                ? 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))'
+                : 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))';
         grid.style.justifyContent = n <= 2 ? 'center' : '';
 
         if (!n) {

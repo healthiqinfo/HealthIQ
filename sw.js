@@ -1,12 +1,13 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.5 — Tri-state theme cycle + premium user menu:
-   * Header button now cycles Light -> Dark -> OLED -> Light with a
-     morphing sun/moon/dot icon and mode-specific button skin.
-   * Removed redundant OLED toggle from inside the user-icon dropdown.
-   * User menu v6: bigger gradient avatar with status dot, refined
-     typography, accent-bar hover, glass surface with backdrop-blur,
-     full-width sheet on mobile, dark + OLED variants. */
-const VERSION = 'hiq-v1.6.5';
+   v1.6.7 — Mobile go-live fixes (revised):
+   * Removed hamburger button + mobile-nav drawer entirely. The mobile
+     header now keeps every control visible (logo, search, theme cycle,
+     login/user-icon) — no drawer needed since the user menu already
+     surfaces everything the drawer offered.
+   * Pricing cards now stack 1-column on phones regardless of plan count
+     (fix the "two half-cards side-by-side" bug for 2-plan layouts).
+     min(100%, Npx) in renderPricingPlans() + !important CSS belt. */
+const VERSION = 'hiq-v1.6.7';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
