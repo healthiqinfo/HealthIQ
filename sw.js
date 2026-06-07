@@ -1,19 +1,24 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.11 — Contact info fully driven by admin Settings (no more
-   duplicated hardcoded numbers across the codebase):
-   * Removed `sameAs: [wa.me/919999321875]` from the JSON-LD SEO block —
-     stale SEO data is worse than no SEO data.
-   * Footer Contact links now render empty with [hidden] in HTML and are
-     populated by loadDynamicContent() from APP.settings only. No more
-     stale "+91 99993 21875" flashing before JS hydrates.
-   * FAB WhatsApp action's priority chain no longer has an inline
-     '919999321875' fallback — it now ends at DEFAULT_SETTINGS, the SINGLE
-     bootstrap-fallback location in the codebase. If everything is empty,
-     a friendly toast appears instead of opening a wrong number.
-   * loadDynamicContent() now show/hides footer email + WhatsApp links
-     based on whether the admin has set a value — clearing the field
-     hides the link cleanly. */
-const VERSION = 'hiq-v1.6.11';
+   v1.6.12 — FAB WhatsApp now stays in sync across tabs/devices:
+   * Problem: admin saved a new WhatsApp number on one device but the FAB
+     on another device (or same device after a stale page load) still
+     opened the old/default number, because APP.settings was only loaded
+     on the initial page boot.
+   * Fix:
+     1. FAB menu now triggers a background refresh of the contact
+        settings from Supabase every time it opens (throttled to once
+        per 30s). By the time the user reads the menu and taps WhatsApp,
+        APP.settings.whatsapp_number is fresh.
+     2. FAB click logs the full resolution chain to devtools so any
+        future "wrong number" report is debuggable in <30 seconds.
+     3. fetchSettings() now surfaces a visible error toast for admins
+        when the site_settings table is missing or unreachable (was
+        silently console.warn'd before — easy to miss).
+     4. SUPABASE_DASHBOARD_SETUP.sql now ships the site_settings table
+        DDL + seed rows + RLS policy template, so fresh Supabase
+        projects don't end up with admin saves disappearing into a
+        void. */
+const VERSION = 'hiq-v1.6.12';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

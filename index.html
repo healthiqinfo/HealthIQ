@@ -4621,6 +4621,43 @@
 
     // Floating Action Menu controller
     const FabMenu = (() => {
+        // v1.6.12 — Background refresh of contact settings when the FAB
+        // menu opens. Prevents the "I changed the WhatsApp number in admin
+        // but the FAB still opens the old one" bug across tabs/devices.
+        // Throttled to once per 30 seconds to avoid hammering Supabase.
+        let _lastRefresh = 0;
+        async function refreshContactSettingsSoon() {
+            const now = Date.now();
+            if (now - _lastRefresh < 30000) return; // throttle
+            _lastRefresh = now;
+            try {
+                if (typeof db === 'undefined' || !db) return;
+                // Pull JUST the two contact keys — fast, ~1 KB response.
+                const { data, error } = await db
+                    .from('site_settings')
+                    .select('key,value')
+                    .in('key', ['whatsapp_number', 'contact_email']);
+                if (error) { console.warn('[FAB] contact refresh skipped:', error.message); return; }
+                if (!data) return;
+                data.forEach(r => {
+                    if (r && r.key && r.value != null) {
+                        if (!window.APP) return;
+                        if (!APP.settings) APP.settings = {};
+                        APP.settings[r.key] = r.value;
+                        if (r.key === 'whatsapp_number') {
+                            APP._waNumber = String(r.value).replace(/\D/g, '');
+                        }
+                    }
+                });
+                console.debug('[FAB] contact settings refreshed:', {
+                    whatsapp_number: APP.settings.whatsapp_number,
+                    contact_email: APP.settings.contact_email
+                });
+            } catch (e) {
+                console.warn('[FAB] contact refresh exception:', e);
+            }
+        }
+
         function init() {
             const menu = document.getElementById('fabMenu');
             const trig = document.getElementById('fabTrigger');
@@ -4633,6 +4670,11 @@
             function toggle() {
                 const open = menu.classList.toggle('is-open');
                 trig.setAttribute('aria-expanded', open ? 'true' : 'false');
+                // v1.6.12 — every time the menu OPENS, kick off a
+                // background re-fetch of the contact settings so the
+                // WhatsApp action always uses the latest admin-saved
+                // number even if it was changed in another tab/device.
+                if (open) refreshContactSettingsSoon();
             }
             trig.addEventListener('click', e => { e.stopPropagation(); toggle(); });
             document.addEventListener('click', e => { if (!menu.contains(e.target)) close(); });
@@ -4645,20 +4687,28 @@
                     else if (action === 'theme') toggleDark();
                     else if (action === 'search' && typeof CommandPalette !== 'undefined') CommandPalette.open();
                     else if (action === 'whatsapp') {
-                        // v1.6.11 — Admin Settings is the SINGLE source of truth.
-                        // Resolution order (no more inline literals):
-                        //   1. APP.settings.whatsapp_number — live admin save
-                        //   2. APP._waNumber — cached fast-path from loadDynamicContent
+                        // v1.6.12 — Admin Settings is the SINGLE source of truth.
+                        // Resolution order (most authoritative first):
+                        //   1. APP.settings.whatsapp_number — live admin save (refreshed
+                        //      ~once per menu open via refreshContactSettingsSoon).
+                        //   2. APP._waNumber — cached fast-path from loadDynamicContent.
                         //   3. DEFAULT_SETTINGS.whatsapp_number — the ONE bootstrap
-                        //      default that lives in code (single source of fallback).
-                        // If all three are empty (admin cleared the field & DB still
-                        // loading), show a friendly toast instead of opening a
-                        // wrong/random number. Strips non-digits defensively.
-                        const raw = (window.APP && APP.settings && APP.settings.whatsapp_number)
-                            || (window.APP && APP._waNumber)
-                            || (typeof DEFAULT_SETTINGS !== 'undefined' && DEFAULT_SETTINGS.whatsapp_number)
-                            || '';
+                        //      default in code (single source of fallback).
+                        // If all three are empty, show a friendly toast instead of
+                        // opening a wrong number. Strips non-digits defensively.
+                        // Console-logs the decision chain so the source is always
+                        // visible in devtools if a user reports a wrong number.
+                        const fromSettings = window.APP && APP.settings && APP.settings.whatsapp_number;
+                        const fromCache = window.APP && APP._waNumber;
+                        const fromDefault = (typeof DEFAULT_SETTINGS !== 'undefined') ? DEFAULT_SETTINGS.whatsapp_number : '';
+                        const raw = fromSettings || fromCache || fromDefault || '';
                         const num = String(raw).replace(/\D/g, '');
+                        console.debug('[FAB WhatsApp] resolution chain:', {
+                            'APP.settings.whatsapp_number': fromSettings || '(empty)',
+                            'APP._waNumber': fromCache || '(empty)',
+                            'DEFAULT_SETTINGS.whatsapp_number': fromDefault || '(empty)',
+                            'resolved': num || '(none)'
+                        });
                         if (!num) {
                             showToast('WhatsApp contact is being set up. Please try again in a moment or use the contact email.', 'info');
                             return;
@@ -5075,12 +5125,33 @@
 
     async function fetchSettings() {
         if(!isSupabaseConfigured()) return;
+        let fetchError = null;
         try {
             const {data,error}=await db.from('site_settings').select('key,value');
-            if(error) { console.warn('fetchSettings error:', error); }
+            if(error) { fetchError = error; console.warn('fetchSettings error:', error); }
             else if(data) data.forEach(r=>APP.settings[r.key]=r.value);
-        } catch(e){ console.warn('fetchSettings exception:', e); }
-        // Merge defaults for missing keys
+        } catch(e){ fetchError = e; console.warn('fetchSettings exception:', e); }
+        // v1.6.12 — Make table-missing errors discoverable for admins so a
+        // silent RLS / missing-table issue doesn't lead to the "I saved
+        // it but it doesn't stick" bug surfacing as a contact-info problem
+        // weeks later. We only toast admins (logged-in role==='admin') so
+        // regular visitors aren't bothered.
+        if (fetchError) {
+            const msg = String(fetchError.message || fetchError);
+            const looksLikeMissingTable = /relation .* does not exist|404|not\s*found/i.test(msg);
+            const isAdmin = APP.userProfile && APP.userProfile.role === 'admin';
+            if (isAdmin && typeof showToast === 'function') {
+                showToast(
+                    looksLikeMissingTable
+                        ? 'Settings table is missing. Admin contact info won\u2019t persist until site_settings exists in Supabase.'
+                        : 'Settings load error: ' + msg + ' — admin saves may not persist.',
+                    'error'
+                );
+            }
+        }
+        // Merge defaults for missing keys (`!APP.settings[k]` treats '' / null
+        // / undefined as "not set" so the admin can't accidentally end up with
+        // a blank required field after clearing then saving).
         for(const k in DEFAULT_SETTINGS){ if(!APP.settings[k]) APP.settings[k]=DEFAULT_SETTINGS[k]; }
         applySettings();
     }
