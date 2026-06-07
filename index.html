@@ -186,7 +186,7 @@
         .hamburger { display: none; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--gray-800); transition: var(--transition); }
         .hamburger.active { transform: rotate(90deg); }
 
-        .hero { padding: 9rem 2rem 5rem; position: relative; overflow: hidden; background: linear-gradient(160deg, var(--primary-light) 0%, var(--white) 40%, #f0f7ff 100%); text-align: center; }
+        .hero { padding: 6rem 2rem 5rem; position: relative; overflow: hidden; background: linear-gradient(160deg, var(--primary-light) 0%, var(--white) 40%, #f0f7ff 100%); text-align: center; }
         /* Soft animated gradient mesh background — subtle, no rotation jank */
         .hero::before { content: ''; position: absolute; top: -40%; right: -15%; width: 700px; height: 700px; background: radial-gradient(circle, rgba(15,111,236,0.08) 0%, transparent 65%); border-radius: 50%; animation: heroFloat 8s ease-in-out infinite; z-index: 0; pointer-events: none; }
         .hero::after { content: ''; position: absolute; bottom: -20%; left: -10%; width: 500px; height: 500px; background: radial-gradient(circle, rgba(139,92,246,0.06) 0%, transparent 65%); border-radius: 50%; animation: heroFloat 10s ease-in-out infinite reverse; z-index: 0; pointer-events: none; }
@@ -229,7 +229,7 @@
         [data-vt="modal"] { view-transition-name: modal; }
 
         @media (max-width: 768px) { .hero h1 { font-size: 2.2rem; } .hero-stats { gap: 1.5rem; flex-wrap: wrap; } }
-        @media (max-width: 600px) { .hero { padding: 7rem 1rem 3rem; } .hero h1 { font-size: 1.9rem; } }
+        @media (max-width: 600px) { .hero { padding: 4.5rem 1rem 3rem; } .hero h1 { font-size: 1.9rem; } }
         .reveal-item { opacity: 0; transform: translateY(30px); transition: all 0.6s cubic-bezier(0.4,0,0.2,1); }
         .reveal-item.revealed { opacity: 1; transform: translateY(0); }
         .reveal-item:nth-child(2) { transition-delay: 0.1s; }
@@ -459,7 +459,7 @@
             .nav-links { display: none; } .hamburger { display: block; }
             .course-grid, .features-grid, .pricing-grid, .testimonial-grid { grid-template-columns: 1fr; }
             .footer-grid { grid-template-columns: 1fr 1fr; } .section { padding: 3rem 1.5rem; }
-            .hero { padding: 6rem 1rem 2rem; } .admin-layout { grid-template-columns: 1fr; }
+            .hero { padding: 5rem 1rem 2rem; } .admin-layout { grid-template-columns: 1fr; }
             .admin-sidebar { display: none; position: fixed; top: 0; left: 0; bottom: 0; width: 280px; z-index: 100; box-shadow: 4px 0 20px rgba(0,0,0,0.15); animation: slideInLeft 0.3s ease; }
             .admin-sidebar.mobile-open { display: flex; }
             .admin-sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; }
