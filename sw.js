@@ -1,7 +1,7 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.1.0 — adds update notification flow, never caches Supabase auth/realtime,
-   never caches API responses (orders/profiles/etc), and skips opaque/error responses. */
-const VERSION = 'hiq-v1.1.0';
+   v1.2.0 — Elite UX pack v2: command palette, skeletons, sparklines, confetti,
+   admin keyboard shortcuts. Cache name bumped to force shell refresh for all clients. */
+const VERSION = 'hiq-v1.2.0';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

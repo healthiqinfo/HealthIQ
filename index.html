@@ -1571,6 +1571,263 @@
 
         /* 12) Make WhatsApp button a tiny bit smaller on tiny screens so it doesn't dominate */
         @media (max-width: 360px) { .whatsapp-float { width: 50px; height: 50px; font-size: 1.4rem; } }
+
+        /* ============================================================
+           ELITE ENHANCEMENT PACK v2 — June 2026
+           Adds:
+           - Shimmer skeleton loaders
+           - Command palette (Ctrl/⌘+K)
+           - Button loading spinner state
+           - Trend pills + sparklines for admin
+           - Reveal-on-scroll micro-interactions
+           - Brand-tinted scrollbars
+           - Modal animation polish
+           - CSS-only confetti burst
+           - Premium admin topbar
+           - Pulsing status dots
+           - Donut chart styling
+           - Animated counters (no extra CSS needed)
+           ============================================================ */
+
+        /* 1) Shimmer skeleton loaders */
+        .skeleton {
+            position: relative; overflow: hidden;
+            background: linear-gradient(90deg, var(--gray-100) 0%, var(--gray-50) 50%, var(--gray-100) 100%);
+            background-size: 200% 100%;
+            animation: shimmer 1.4s ease-in-out infinite;
+            border-radius: 8px;
+        }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .skeleton-line { height: 10px; margin: 0.5rem 0; border-radius: 4px; }
+        .skeleton-line.short { width: 40%; }
+        .skeleton-line.medium { width: 70%; }
+        .skeleton-card {
+            background: var(--white); border: 1px solid var(--gray-200); border-radius: var(--radius-lg);
+            padding: 1.25rem; overflow: hidden;
+        }
+        .skeleton-card .skeleton-thumb { height: 160px; border-radius: 10px; margin-bottom: 1rem; }
+        .skeleton-grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+        [data-theme="dark"] .skeleton {
+            background: linear-gradient(90deg, #1a2233 0%, #243046 50%, #1a2233 100%);
+        }
+        [data-theme="dark"] .skeleton-card { background: #131c30; border-color: rgba(255,255,255,0.06); }
+
+        /* 2) Command palette (Ctrl/⌘ + K) */
+        .cmdk-overlay {
+            position: fixed; inset: 0; z-index: 6000;
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            display: none; align-items: flex-start; justify-content: center;
+            padding-top: clamp(60px, 12vh, 140px);
+            opacity: 0; transition: opacity 0.18s ease;
+        }
+        .cmdk-overlay.active { display: flex; opacity: 1; }
+        .cmdk-panel {
+            width: min(92vw, 620px);
+            background: var(--white); border: 1px solid var(--gray-200);
+            border-radius: 16px; overflow: hidden;
+            box-shadow: 0 32px 64px -16px rgba(15, 23, 42, 0.4), 0 0 0 1px rgba(15, 23, 42, 0.05);
+            transform: translateY(-12px) scale(0.98); opacity: 0;
+            animation: cmdkIn 0.22s cubic-bezier(0.2,0.9,0.3,1.1) forwards;
+        }
+        @keyframes cmdkIn { to { transform: translateY(0) scale(1); opacity: 1; } }
+        [data-theme="dark"] .cmdk-panel { background: #131c30; border-color: rgba(255,255,255,0.08); }
+        .cmdk-input-wrap { display: flex; align-items: center; gap: 0.75rem; padding: 0.85rem 1rem; border-bottom: 1px solid var(--gray-200); }
+        [data-theme="dark"] .cmdk-input-wrap { border-bottom-color: rgba(255,255,255,0.06); }
+        .cmdk-input-wrap::before { content: '\1F50D'; font-size: 1.05rem; opacity: 0.6; }
+        .cmdk-input {
+            flex: 1; background: transparent; border: none; outline: none;
+            font-size: 1rem; color: var(--gray-900); font-family: inherit;
+        }
+        [data-theme="dark"] .cmdk-input { color: #f1f5f9; }
+        .cmdk-input::placeholder { color: var(--gray-300); }
+        .cmdk-list { max-height: min(60vh, 420px); overflow-y: auto; padding: 0.4rem; }
+        .cmdk-section-label {
+            font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1.4px;
+            color: var(--gray-300); padding: 0.6rem 0.75rem 0.3rem;
+        }
+        .cmdk-item {
+            display: flex; align-items: center; gap: 0.75rem;
+            padding: 0.6rem 0.75rem; border-radius: 8px;
+            font-size: 0.9rem; color: var(--gray-800); cursor: pointer;
+            transition: background 0.12s;
+        }
+        .cmdk-item:hover, .cmdk-item.is-active {
+            background: var(--primary-light); color: var(--primary);
+        }
+        [data-theme="dark"] .cmdk-item { color: #cbd5e1; }
+        [data-theme="dark"] .cmdk-item:hover, [data-theme="dark"] .cmdk-item.is-active {
+            background: rgba(59, 139, 255, 0.15); color: #60a5fa;
+        }
+        .cmdk-item-icon { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; background: var(--gray-100); flex-shrink: 0; font-size: 0.95rem; }
+        [data-theme="dark"] .cmdk-item-icon { background: rgba(255,255,255,0.06); }
+        .cmdk-item.is-active .cmdk-item-icon { background: rgba(255,255,255,0.6); }
+        .cmdk-item-text { flex: 1; min-width: 0; }
+        .cmdk-item-title { font-weight: 600; }
+        .cmdk-item-sub { font-size: 0.72rem; color: var(--gray-300); margin-top: 1px; }
+        .cmdk-empty { padding: 2rem 1rem; text-align: center; color: var(--gray-300); font-size: 0.88rem; }
+        .cmdk-footer {
+            padding: 0.5rem 1rem; border-top: 1px solid var(--gray-200);
+            font-size: 0.7rem; color: var(--gray-600); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;
+        }
+        [data-theme="dark"] .cmdk-footer { border-top-color: rgba(255,255,255,0.06); color: #94a3b8; }
+        .kbd {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-width: 18px; height: 20px; padding: 0 5px;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+            font-size: 0.68rem; font-weight: 700;
+            background: var(--gray-100); color: var(--gray-800);
+            border: 1px solid var(--gray-200); border-bottom-width: 2px;
+            border-radius: 5px; vertical-align: middle;
+        }
+        [data-theme="dark"] .kbd { background: rgba(255,255,255,0.06); color: #cbd5e1; border-color: rgba(255,255,255,0.1); }
+        .cmdk-hint-btn {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            padding: 0.4rem 0.65rem; border-radius: 8px;
+            background: var(--gray-50); border: 1px solid var(--gray-200);
+            color: var(--gray-600); font-size: 0.78rem; font-weight: 500; cursor: pointer;
+            transition: all 0.18s;
+        }
+        .cmdk-hint-btn:hover { background: var(--white); border-color: var(--primary); color: var(--primary); }
+        [data-theme="dark"] .cmdk-hint-btn { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: #94a3b8; }
+        [data-theme="dark"] .cmdk-hint-btn:hover { background: rgba(255,255,255,0.08); color: #60a5fa; border-color: rgba(59,139,255,0.4); }
+        @media (max-width: 640px) { .cmdk-hint-btn .kbd-label { display: none; } .cmdk-hint-btn { padding: 0.4rem; } }
+
+        /* 3) Button loading spinner state */
+        .btn[data-loading="true"] {
+            position: relative; color: transparent !important; pointer-events: none; cursor: progress;
+        }
+        .btn[data-loading="true"]::after {
+            content: ''; position: absolute; top: 50%; left: 50%;
+            width: 16px; height: 16px; margin: -8px 0 0 -8px;
+            border: 2px solid currentColor; border-top-color: transparent;
+            border-radius: 50%; opacity: 0.85;
+            animation: btnSpin 0.7s linear infinite;
+        }
+        @keyframes btnSpin { to { transform: rotate(360deg); } }
+        .btn.btn-primary[data-loading="true"]::after, .btn.btn-success[data-loading="true"]::after, .btn.btn-danger[data-loading="true"]::after, .btn.btn-warning[data-loading="true"]::after { border-color: #fff; border-top-color: transparent; }
+
+        /* 4) Trend pills for stats */
+        .trend-pill {
+            display: inline-flex; align-items: center; gap: 0.25rem;
+            padding: 0.15rem 0.5rem; border-radius: 999px;
+            font-size: 0.7rem; font-weight: 700;
+            background: var(--gray-100); color: var(--gray-600);
+        }
+        .trend-pill.up { background: rgba(16, 185, 129, 0.12); color: #047857; }
+        .trend-pill.down { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+        .trend-pill.flat { background: rgba(100, 116, 139, 0.12); color: #475569; }
+        [data-theme="dark"] .trend-pill.up { background: rgba(16, 185, 129, 0.18); color: #34d399; }
+        [data-theme="dark"] .trend-pill.down { background: rgba(239, 68, 68, 0.18); color: #f87171; }
+        [data-theme="dark"] .trend-pill.flat { background: rgba(148, 163, 184, 0.18); color: #94a3b8; }
+
+        /* 5) Inline sparkline */
+        .sparkline { display: block; width: 100%; height: 36px; margin-top: 0.5rem; overflow: visible; }
+        .sparkline path.fill { fill: currentColor; opacity: 0.12; }
+        .sparkline path.line { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+        .sparkline circle { fill: currentColor; }
+
+        /* 6) Reveal-on-scroll */
+        .reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2,0.9,0.3,1.05); will-change: opacity, transform; }
+        .reveal.is-visible { opacity: 1; transform: translateY(0); }
+        .reveal-stagger > * { opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2,0.9,0.3,1.05); }
+        .reveal-stagger.is-visible > * { opacity: 1; transform: translateY(0); }
+        .reveal-stagger.is-visible > *:nth-child(1) { transition-delay: 0.02s; }
+        .reveal-stagger.is-visible > *:nth-child(2) { transition-delay: 0.06s; }
+        .reveal-stagger.is-visible > *:nth-child(3) { transition-delay: 0.1s; }
+        .reveal-stagger.is-visible > *:nth-child(4) { transition-delay: 0.14s; }
+        .reveal-stagger.is-visible > *:nth-child(5) { transition-delay: 0.18s; }
+        .reveal-stagger.is-visible > *:nth-child(6) { transition-delay: 0.22s; }
+        .reveal-stagger.is-visible > *:nth-child(n+7) { transition-delay: 0.26s; }
+        @media (prefers-reduced-motion: reduce) {
+            .reveal, .reveal-stagger > * { opacity: 1 !important; transform: none !important; transition: none !important; }
+        }
+
+        /* 7) Brand-tinted scrollbars (WebKit + Firefox) */
+        html { scrollbar-width: thin; scrollbar-color: rgba(15, 111, 236, 0.45) transparent; }
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(15, 111, 236, 0.35); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(15, 111, 236, 0.6); background-clip: padding-box; border: 2px solid transparent; }
+        [data-theme="dark"] html { scrollbar-color: rgba(59, 139, 255, 0.4) transparent; }
+        [data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(59, 139, 255, 0.35); background-clip: padding-box; border: 2px solid transparent; }
+
+        /* 8) Modal animation polish */
+        .modal-overlay.active { animation: modalOverlayIn 0.22s ease both; }
+        @keyframes modalOverlayIn { from { opacity: 0; backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); } to { opacity: 1; } }
+        .modal-overlay.active .modal { animation: modalScaleIn 0.28s cubic-bezier(0.2,0.9,0.3,1.15) both; }
+        @keyframes modalScaleIn { from { transform: translateY(8px) scale(0.96); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+
+        /* 9) CSS-only confetti burst */
+        .confetti-root { position: fixed; inset: 0; pointer-events: none; z-index: 5500; overflow: hidden; }
+        .confetti-piece {
+            position: absolute; top: -10px; width: 10px; height: 14px; opacity: 0;
+            animation: confettiFall var(--dur, 2.4s) cubic-bezier(0.25, 0.46, 0.45, 0.94) var(--delay, 0s) forwards;
+            transform-origin: center;
+            border-radius: 2px;
+        }
+        @keyframes confettiFall {
+            0% { transform: translate3d(0,-10px,0) rotate(0); opacity: 1; }
+            100% { transform: translate3d(var(--dx, 0px), 110vh, 0) rotate(var(--rot, 720deg)); opacity: 0.6; }
+        }
+
+        /* 10) Premium admin topbar tweaks */
+        .admin-search-bar {
+            display: flex; align-items: center; gap: 0.5rem;
+            padding: 0.45rem 0.75rem; background: var(--gray-50);
+            border: 1px solid var(--gray-200); border-radius: 10px;
+            min-width: 220px; max-width: 360px; flex: 1;
+            transition: all 0.2s;
+        }
+        .admin-search-bar:focus-within { background: var(--white); border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+        .admin-search-bar input { border: none; outline: none; background: transparent; flex: 1; font-size: 0.85rem; font-family: inherit; color: var(--gray-900); }
+        [data-theme="dark"] .admin-search-bar { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+        [data-theme="dark"] .admin-search-bar:focus-within { background: rgba(255,255,255,0.08); }
+        [data-theme="dark"] .admin-search-bar input { color: #f1f5f9; }
+        .admin-bell {
+            position: relative; width: 36px; height: 36px;
+            border-radius: 10px; background: var(--gray-50); border: 1px solid var(--gray-200);
+            display: inline-flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.2s; font-size: 1.05rem;
+        }
+        .admin-bell:hover { background: var(--white); border-color: var(--primary); color: var(--primary); transform: translateY(-1px); }
+        .admin-bell .bell-dot {
+            position: absolute; top: 6px; right: 6px;
+            min-width: 16px; height: 16px; padding: 0 4px;
+            background: var(--danger); color: #fff; border-radius: 999px;
+            font-size: 0.62rem; font-weight: 800; line-height: 16px; text-align: center;
+            box-shadow: 0 0 0 2px var(--white);
+        }
+        [data-theme="dark"] .admin-bell { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: #cbd5e1; }
+        [data-theme="dark"] .admin-bell .bell-dot { box-shadow: 0 0 0 2px #0f172a; }
+
+        /* 11) Pulsing status dots */
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--gray-300); margin-right: 0.4rem; vertical-align: middle; }
+        .status-dot.pending { background: var(--warning); position: relative; }
+        .status-dot.pending::after {
+            content: ''; position: absolute; inset: -3px; border-radius: 50%;
+            border: 2px solid var(--warning); opacity: 0.6;
+            animation: dotPulse 1.6s ease-out infinite;
+        }
+        .status-dot.success { background: var(--success); }
+        .status-dot.danger { background: var(--danger); }
+        @keyframes dotPulse { 0% { transform: scale(0.8); opacity: 0.8; } 100% { transform: scale(1.8); opacity: 0; } }
+
+        /* 12) Donut chart (SVG-driven; class hooks only) */
+        .donut-wrap { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+        .donut { width: 130px; height: 130px; flex-shrink: 0; }
+        .donut-legend { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.82rem; }
+        .donut-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 0.5rem; vertical-align: middle; }
+
+        /* 13) Enhanced admin stat-card with sparkline */
+        .admin-stat-card .stat-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+        .admin-stat-card .stat-spark-wrap { color: var(--primary); margin-top: 0.25rem; }
+        .admin-stat-card:nth-child(2) .stat-spark-wrap { color: var(--success); }
+        .admin-stat-card:nth-child(3) .stat-spark-wrap { color: var(--warning); }
+        .admin-stat-card:nth-child(4) .stat-spark-wrap { color: #8b5cf6; }
+        [data-theme="dark"] .admin-stat-card { background: #131c30; border-color: rgba(255,255,255,0.06); }
+        [data-theme="dark"] .admin-stat-card .stat-value { color: #f1f5f9; }
+        [data-theme="dark"] .admin-stat-card .stat-label { color: #94a3b8; }
     </style>
 </head>
 <body>
@@ -1580,6 +1837,22 @@
     <div class="offline-banner" id="offlineBanner">⚠️ Connection failed. Some features may not work. <button onclick="location.reload()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;margin-left:0.5rem;font-weight:600;">Retry</button></div>
     <div class="mobile-nav-backdrop" id="mobileNavBackdrop" onclick="toggleMobile()" aria-hidden="true"></div>
     <div class="toast-container" id="toastContainer" role="status" aria-live="polite" aria-atomic="false"></div>
+    <div class="confetti-root" id="confettiRoot" aria-hidden="true"></div>
+
+    <!-- Command Palette -->
+    <div class="cmdk-overlay" id="cmdkOverlay" role="dialog" aria-modal="true" aria-label="Command palette" hidden>
+        <div class="cmdk-panel" role="document">
+            <div class="cmdk-input-wrap">
+                <input type="search" id="cmdkInput" class="cmdk-input" placeholder="Search courses, plans, sections, actions…" autocomplete="off" spellcheck="false" aria-label="Search commands">
+                <span class="kbd">Esc</span>
+            </div>
+            <div class="cmdk-list" id="cmdkList" role="listbox"></div>
+            <div class="cmdk-footer">
+                <span><span class="kbd">&#x2191;</span> <span class="kbd">&#x2193;</span> navigate &nbsp;&nbsp; <span class="kbd">&#x21B5;</span> select</span>
+                <span><span class="kbd">Esc</span> close</span>
+            </div>
+        </div>
+    </div>
 
     <nav class="navbar" role="navigation" aria-label="Main navigation">
         <div class="nav-container">
@@ -1591,6 +1864,7 @@
                 <li><a href="#faq">FAQ</a></li>
             </ul>
             <div class="nav-actions">
+                <button type="button" class="cmdk-hint-btn" onclick="CommandPalette.open()" aria-label="Open command palette (Ctrl+K)" title="Search · Ctrl+K"><span>&#x1F50D;</span><span class="kbd-label">Search</span><span class="kbd">&#x2318;K</span></button>
                 <button class="dark-toggle" onclick="toggleDark()" aria-label="Toggle dark mode">&#x1F319;</button>
                 <div id="authButtons">
                     <button class="btn btn-primary" onclick="openModal('login')">Login</button>
@@ -2096,6 +2370,7 @@
         document.documentElement.setAttribute('data-theme', isDark ? '' : 'dark');
         localStorage.setItem('theme', isDark ? 'light' : 'dark');
         document.querySelectorAll('.dark-toggle').forEach(b=>b.innerHTML = isDark ? '&#x1F319;' : '&#x1F31D;');
+        if (typeof syncThemeColor === 'function') syncThemeColor();
     }
     function toggleMobile(forceState) {
         const nav = document.getElementById('mobileNav');
@@ -2152,6 +2427,363 @@
             update();
         });
     })();
+
+    // ===== ELITE ENHANCEMENT MODULES (v2) =====
+
+    // Button loading state helper — disables + shows spinner + restores label
+    function setBtnLoading(btn, on, busyLabel) {
+        if (!btn) return;
+        if (on) {
+            btn.dataset.loading = 'true';
+            btn.setAttribute('aria-busy', 'true');
+            if (!btn.dataset.origDisabled) btn.dataset.origDisabled = btn.disabled ? '1' : '0';
+            btn.disabled = true;
+            if (busyLabel) {
+                btn.dataset.origLabel = btn.dataset.origLabel || btn.innerHTML;
+                btn.innerHTML = busyLabel;
+            }
+        } else {
+            delete btn.dataset.loading;
+            btn.removeAttribute('aria-busy');
+            btn.disabled = btn.dataset.origDisabled === '1';
+            delete btn.dataset.origDisabled;
+            if (btn.dataset.origLabel) { btn.innerHTML = btn.dataset.origLabel; delete btn.dataset.origLabel; }
+        }
+    }
+
+    // Animated number counter (count-up). El must contain target number as data-count or text content.
+    const Counters = (() => {
+        const fmt = (n, decimals=0) => {
+            if (Number.isFinite(decimals) && decimals > 0) return n.toFixed(decimals);
+            return Math.round(n).toLocaleString('en-IN');
+        };
+        function animate(el, to, opts={}) {
+            if (!el) return;
+            const dur = opts.duration || 900;
+            const prefix = opts.prefix || '';
+            const suffix = opts.suffix || '';
+            const decimals = opts.decimals || 0;
+            const from = Number(el.dataset.from || 0);
+            const start = performance.now();
+            const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (reduced) { el.textContent = prefix + fmt(to, decimals) + suffix; return; }
+            function step(now) {
+                const t = Math.min(1, (now - start) / dur);
+                const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+                el.textContent = prefix + fmt(from + (to - from) * eased, decimals) + suffix;
+                if (t < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        }
+        return { animate };
+    })();
+
+    // Reveal-on-scroll using IntersectionObserver
+    const Reveals = (() => {
+        let io = null;
+        function init(root=document) {
+            if (!('IntersectionObserver' in window)) {
+                root.querySelectorAll('.reveal, .reveal-stagger').forEach(el => el.classList.add('is-visible'));
+                return;
+            }
+            if (!io) {
+                io = new IntersectionObserver(entries => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('is-visible');
+                            io.unobserve(entry.target);
+                        }
+                    });
+                }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+            }
+            root.querySelectorAll('.reveal:not(.is-visible), .reveal-stagger:not(.is-visible)').forEach(el => io.observe(el));
+        }
+        return { init };
+    })();
+
+    // Theme color meta sync — keeps mobile browser chrome matching theme
+    function syncThemeColor() {
+        let meta = document.querySelector('meta[name="theme-color"]');
+        if (!meta) { meta = document.createElement('meta'); meta.name = 'theme-color'; document.head.appendChild(meta); }
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        meta.content = isDark ? '#0a0f1a' : '#0f6fec';
+    }
+
+    // CSS-only confetti burst (non-blocking, auto-clean)
+    function confettiBurst(opts={}) {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const root = document.getElementById('confettiRoot');
+        if (!root) return;
+        const count = opts.count || 80;
+        const colors = opts.colors || ['#0f6fec', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < count; i++) {
+            const p = document.createElement('span');
+            p.className = 'confetti-piece';
+            const left = Math.random() * 100;
+            const dx = (Math.random() - 0.5) * 280;
+            const rot = (Math.random() * 720 + 360) * (Math.random() < 0.5 ? -1 : 1);
+            const dur = (1.8 + Math.random() * 1.6).toFixed(2);
+            const delay = (Math.random() * 0.3).toFixed(2);
+            p.style.left = left + '%';
+            p.style.background = colors[i % colors.length];
+            p.style.setProperty('--dx', dx + 'px');
+            p.style.setProperty('--rot', rot + 'deg');
+            p.style.setProperty('--dur', dur + 's');
+            p.style.setProperty('--delay', delay + 's');
+            if (Math.random() < 0.3) p.style.borderRadius = '50%';
+            frag.appendChild(p);
+        }
+        root.appendChild(frag);
+        setTimeout(() => { while (root.firstChild) root.removeChild(root.firstChild); }, 4200);
+    }
+
+    // SVG sparkline generator — returns markup string
+    function Sparkline(values, opts={}) {
+        const w = opts.width || 120;
+        const h = opts.height || 36;
+        const pad = 2;
+        if (!Array.isArray(values) || values.length < 2) {
+            return '<svg class="sparkline" viewBox="0 0 '+w+' '+h+'" aria-hidden="true"></svg>';
+        }
+        const max = Math.max(...values, 1);
+        const min = Math.min(...values, 0);
+        const range = (max - min) || 1;
+        const step = (w - pad * 2) / (values.length - 1);
+        const pts = values.map((v, i) => {
+            const x = pad + i * step;
+            const y = pad + (h - pad * 2) * (1 - (v - min) / range);
+            return [x, y];
+        });
+        const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+        const fill = line + ' L' + pts[pts.length - 1][0].toFixed(1) + ' ' + (h - pad) + ' L' + pts[0][0].toFixed(1) + ' ' + (h - pad) + ' Z';
+        const last = pts[pts.length - 1];
+        return '<svg class="sparkline" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true">'
+            + '<path class="fill" d="'+fill+'"/>'
+            + '<path class="line" d="'+line+'"/>'
+            + '<circle cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="2.2"/>'
+            + '</svg>';
+    }
+
+    // Trend formatter — returns { dir, pct, html }
+    function formatTrend(current, previous) {
+        const curr = Number(current) || 0;
+        const prev = Number(previous) || 0;
+        if (prev === 0 && curr === 0) return { dir: 'flat', pct: 0, html: '<span class="trend-pill flat">\u2192 0%</span>' };
+        if (prev === 0) return { dir: 'up', pct: 100, html: '<span class="trend-pill up">\u2197 New</span>' };
+        const pct = ((curr - prev) / Math.abs(prev)) * 100;
+        const dir = pct > 0.5 ? 'up' : pct < -0.5 ? 'down' : 'flat';
+        const arrow = dir === 'up' ? '\u2197' : dir === 'down' ? '\u2198' : '\u2192';
+        return { dir, pct, html: '<span class="trend-pill '+dir+'">'+arrow+' '+Math.abs(pct).toFixed(1)+'%</span>' };
+    }
+
+    // Command palette — fuzzy filter + keyboard nav
+    const CommandPalette = (() => {
+        let isOpen = false;
+        let activeIndex = 0;
+        let filtered = [];
+        let lastFocused = null;
+
+        function staticActions() {
+            const isAdmin = !!(window.APP && APP.currentUser && APP.currentUser.role === 'admin');
+            const loggedIn = !!(window.APP && APP.currentUser);
+            const base = [
+                { id: 'go-courses', section: 'Navigate', icon: '\u{1F4DA}', title: 'Browse Courses', sub: 'Jump to course catalog', action: () => location.hash = '#courses' },
+                { id: 'go-pricing', section: 'Navigate', icon: '\u{1F4B0}', title: 'View Pricing', sub: 'Compare plans', action: () => location.hash = '#pricing' },
+                { id: 'go-reviews', section: 'Navigate', icon: '\u2B50', title: 'Read Reviews', sub: 'Student testimonials', action: () => location.hash = '#testimonials' },
+                { id: 'go-faq', section: 'Navigate', icon: '\u2753', title: 'FAQ', sub: 'Frequently asked questions', action: () => location.hash = '#faq' },
+                { id: 'go-top', section: 'Navigate', icon: '\u2191', title: 'Back to Top', sub: 'Scroll to top of page', action: scrollToTop },
+                { id: 'toggle-theme', section: 'Actions', icon: '\u{1F319}', title: 'Toggle Dark Mode', sub: 'Switch between light and dark theme', action: () => toggleDark() }
+            ];
+            if (!loggedIn) {
+                base.push({ id: 'open-login', section: 'Account', icon: '\u{1F511}', title: 'Login', sub: 'Sign in to your account', action: () => openModal('login') });
+                base.push({ id: 'open-register', section: 'Account', icon: '\u270D', title: 'Create Account', sub: 'Sign up for HealthIQ', action: () => openModal('register') });
+            } else {
+                base.push({ id: 'open-dashboard', section: 'Account', icon: '\u{1F4CA}', title: 'My Dashboard', sub: 'Your enrolled courses', action: () => (typeof openDashboard === 'function') && openDashboard() });
+                base.push({ id: 'logout', section: 'Account', icon: '\u{1F6AA}', title: 'Logout', sub: 'Sign out of your account', action: () => (typeof handleLogout === 'function') && handleLogout() });
+            }
+            if (isAdmin) {
+                base.push({ id: 'admin-open', section: 'Admin', icon: '\u{1F6E0}', title: 'Open Admin Panel', sub: 'Manage site', action: () => openAdminPanel() });
+                base.push({ id: 'admin-dashboard', section: 'Admin', icon: '\u{1F4CA}', title: 'Admin: Dashboard', sub: 'Overview & stats', action: () => { openAdminPanel(); setTimeout(() => switchAdminTab('dashboard', document.querySelector('.admin-sidebar-item')), 50); } });
+                base.push({ id: 'admin-orders', section: 'Admin', icon: '\u{1F4CB}', title: 'Admin: Orders', sub: 'Pending approvals', action: () => { openAdminPanel(); setTimeout(() => switchAdminTab('orders', document.querySelectorAll('.admin-sidebar-item')[4]), 50); } });
+                base.push({ id: 'admin-add-course', section: 'Admin', icon: '\u2795', title: 'Add New Course', sub: 'Create a new course', action: () => { openAdminPanel(); setTimeout(() => (typeof openAddCourse === 'function') && openAddCourse(), 80); } });
+                base.push({ id: 'admin-bulk', section: 'Admin', icon: '\u26A1', title: 'Admin: Bulk Actions', sub: 'Batch operations', action: () => { openAdminPanel(); setTimeout(() => switchAdminTab('bulk', document.querySelectorAll('.admin-sidebar-item')[8]), 50); } });
+            }
+            return base;
+        }
+
+        function courseItems() {
+            if (!(window.APP && Array.isArray(APP.courses))) return [];
+            return APP.courses
+                .filter(c => c.is_published !== false)
+                .slice(0, 30)
+                .map(c => ({
+                    id: 'course-' + c.id,
+                    section: 'Courses',
+                    icon: c.icon || '\u{1F4D6}',
+                    title: c.title || 'Untitled course',
+                    sub: (c.category || 'Course') + ' \u00B7 ' + Utils.formatCurrency(c.price || 0),
+                    action: () => { location.hash = '#courses'; setTimeout(() => { const card = document.querySelector('.course-card'); if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200); }
+                }));
+        }
+
+        function allItems() { return staticActions().concat(courseItems()); }
+
+        function score(item, q) {
+            if (!q) return 0;
+            const hay = (item.title + ' ' + item.sub + ' ' + item.section).toLowerCase();
+            const needle = q.toLowerCase();
+            if (hay.includes(needle)) return 100 - hay.indexOf(needle);
+            // simple subsequence score
+            let i = 0, s = 0;
+            for (const ch of needle) {
+                const j = hay.indexOf(ch, i);
+                if (j === -1) return -1;
+                s += (j === i ? 2 : 1);
+                i = j + 1;
+            }
+            return s;
+        }
+
+        function render(query) {
+            const list = document.getElementById('cmdkList');
+            if (!list) return;
+            const items = allItems();
+            const q = (query || '').trim();
+            filtered = q
+                ? items.map(it => ({ it, s: score(it, q) })).filter(x => x.s >= 0).sort((a, b) => b.s - a.s).map(x => x.it)
+                : items;
+            if (!filtered.length) {
+                list.innerHTML = '<div class="cmdk-empty">No matches for "' + Utils.escapeHtml(q) + '"</div>';
+                activeIndex = 0;
+                return;
+            }
+            // Group by section
+            const groups = {};
+            filtered.forEach(it => { (groups[it.section] = groups[it.section] || []).push(it); });
+            let html = '';
+            let idx = 0;
+            Object.keys(groups).forEach(sec => {
+                html += '<div class="cmdk-section-label">' + Utils.escapeHtml(sec) + '</div>';
+                groups[sec].forEach(it => {
+                    html += '<div class="cmdk-item' + (idx === activeIndex ? ' is-active' : '') + '" role="option" data-idx="' + idx + '">'
+                        + '<span class="cmdk-item-icon">' + Utils.escapeHtml(it.icon) + '</span>'
+                        + '<span class="cmdk-item-text"><div class="cmdk-item-title">' + Utils.escapeHtml(it.title) + '</div><div class="cmdk-item-sub">' + Utils.escapeHtml(it.sub) + '</div></span>'
+                        + '<span class="kbd">\u21B5</span>'
+                        + '</div>';
+                    idx++;
+                });
+            });
+            list.innerHTML = html;
+            list.querySelectorAll('.cmdk-item').forEach(el => {
+                el.addEventListener('mouseenter', () => { activeIndex = Number(el.dataset.idx); render(query); });
+                el.addEventListener('click', () => { selectAt(Number(el.dataset.idx)); });
+            });
+            // Scroll active into view
+            const active = list.querySelector('.cmdk-item.is-active');
+            if (active) active.scrollIntoView({ block: 'nearest' });
+        }
+
+        function selectAt(i) {
+            const it = filtered[i];
+            if (!it) return;
+            close();
+            try { it.action(); } catch (e) { console.error('Command action failed:', e); showToast('Action failed', 'error'); }
+        }
+
+        function open() {
+            if (isOpen) return;
+            const ov = document.getElementById('cmdkOverlay');
+            const inp = document.getElementById('cmdkInput');
+            if (!ov || !inp) return;
+            lastFocused = document.activeElement;
+            ov.removeAttribute('hidden');
+            ov.classList.add('active');
+            isOpen = true;
+            inp.value = '';
+            activeIndex = 0;
+            render('');
+            setTimeout(() => inp.focus(), 30);
+        }
+
+        function close() {
+            const ov = document.getElementById('cmdkOverlay');
+            if (!ov) return;
+            ov.classList.remove('active');
+            ov.setAttribute('hidden', '');
+            isOpen = false;
+            if (lastFocused && typeof lastFocused.focus === 'function') { try { lastFocused.focus(); } catch (_) {} }
+        }
+
+        function isActive() { return isOpen; }
+
+        // Init bindings
+        document.addEventListener('DOMContentLoaded', () => {
+            const ov = document.getElementById('cmdkOverlay');
+            const inp = document.getElementById('cmdkInput');
+            if (!ov || !inp) return;
+            ov.addEventListener('click', e => { if (e.target === ov) close(); });
+            inp.addEventListener('input', e => { activeIndex = 0; render(e.target.value); });
+            inp.addEventListener('keydown', e => {
+                if (e.key === 'ArrowDown') { e.preventDefault(); activeIndex = Math.min(filtered.length - 1, activeIndex + 1); render(inp.value); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); activeIndex = Math.max(0, activeIndex - 1); render(inp.value); }
+                else if (e.key === 'Enter') { e.preventDefault(); selectAt(activeIndex); }
+                else if (e.key === 'Escape') { e.preventDefault(); close(); }
+            });
+        });
+
+        // Global hotkey: Ctrl/Cmd + K opens; Escape closes (modal-aware)
+        document.addEventListener('keydown', e => {
+            const k = (e.key || '').toLowerCase();
+            const meta = e.ctrlKey || e.metaKey;
+            // Don't intercept when typing in an editable element unless using meta
+            const target = e.target;
+            const editable = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+            if (meta && k === 'k') { e.preventDefault(); isOpen ? close() : open(); return; }
+            if (!editable && k === '/' && !isOpen) { e.preventDefault(); open(); return; }
+            if (k === 'escape' && isOpen) { e.preventDefault(); close(); }
+        });
+
+        return { open, close, isActive };
+    })();
+
+    // Admin keyboard shortcuts (only when admin panel open + not editing input)
+    (function adminShortcuts() {
+        let lastG = 0;
+        document.addEventListener('keydown', e => {
+            const panel = document.getElementById('adminPanel');
+            const open = panel && panel.classList.contains('active');
+            if (!open) return;
+            const t = e.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            if (CommandPalette.isActive()) return;
+            const k = (e.key || '').toLowerCase();
+            const now = Date.now();
+            const items = document.querySelectorAll('.admin-sidebar-item');
+            // Single-key actions
+            if (k === 'r') { e.preventDefault(); if (typeof refreshAdminData === 'function') refreshAdminData(); return; }
+            if (k === 'n') { e.preventDefault(); if (typeof openAddCourse === 'function') openAddCourse(); return; }
+            if (k === '?') { e.preventDefault(); showToast('Shortcuts: G then D/C/U/O/B/A · R refresh · N new course · / search · Esc close', 'info', { duration: 6000 }); return; }
+            // Two-key g+x combos
+            if (k === 'g') { lastG = now; return; }
+            if (now - lastG < 700) {
+                lastG = 0;
+                const map = { d: ['dashboard', 0], c: ['courses', 2], u: ['users', 3], o: ['orders', 4], e: ['enrollments', 5], b: ['bulk', 8], s: ['settings', 9] };
+                if (map[k] && typeof switchAdminTab === 'function') {
+                    e.preventDefault();
+                    const [tab, idx] = map[k];
+                    switchAdminTab(tab, items[idx] || null);
+                }
+            }
+        });
+    })();
+
+    // Boot: theme-color sync + reveal observer
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof syncThemeColor === 'function') syncThemeColor();
+        if (typeof Reveals !== 'undefined') Reveals.init();
+    });
+
     function toggleAdminSidebar() { const sb=document.getElementById('adminSidebar'); const ov=document.getElementById('adminSidebarOverlay'); sb.classList.toggle('mobile-open'); ov.classList.toggle('active'); }
     function toggleFaq(el) { const item = el.parentElement; item.classList.toggle('active'); el.setAttribute('aria-expanded', item.classList.contains('active')); }
     function toggleUserMenu() {
@@ -2462,6 +3094,8 @@
                 btn+'</div>';
         }).join('');
         grid.setAttribute('aria-busy', 'false');
+        grid.classList.add('reveal-stagger');
+        if (typeof Reveals !== 'undefined') Reveals.init(grid.parentElement || grid);
     }
 
     function buyPlan(planIdx, courseId) {
@@ -2752,6 +3386,9 @@
         // Show/hide Load More
         const lm=document.getElementById('loadMoreWrap'); if(lm) lm.style.display=hasMore?'block':'none';
         grid.setAttribute('aria-busy', 'false');
+        // Apply reveal-on-scroll to new cards
+        grid.classList.add('reveal-stagger');
+        if (typeof Reveals !== 'undefined') Reveals.init(grid.parentElement || grid);
     }
     async function openAdminPanel() {
         if(!APP.currentUser||APP.currentUser.role!=='admin'){showToast('Access denied','error');return;}
@@ -2787,6 +3424,72 @@
         const pendingCount=APP.orders.filter(o=>o.status==='pending').length;
         const todayOrders=APP.orders.filter(o=>new Date(o.created_at).toDateString()===new Date().toDateString()).length;
         const conversionRate=APP.users.length?((APP.enrollments.length/APP.users.length)*100).toFixed(1):0;
+
+        // Last 7 days vs previous 7 days for week-over-week trends
+        const now = new Date();
+        const dayMs = 86400000;
+        const startOfDay = d => { const x = new Date(d); x.setHours(0,0,0,0); return x.getTime(); };
+        const today0 = startOfDay(now);
+        function last7Series(filter, valueFn) {
+            const arr = new Array(7).fill(0);
+            APP.orders.forEach(o => {
+                if (!filter(o)) return;
+                const t = startOfDay(o.created_at);
+                const diff = Math.round((today0 - t) / dayMs);
+                if (diff >= 0 && diff < 7) arr[6 - diff] += (valueFn ? valueFn(o) : 1);
+            });
+            return arr;
+        }
+        const revSeries7 = last7Series(o => o.status === 'completed', o => (o.total_amount || o.amount || 0));
+        const orderSeries7 = last7Series(() => true);
+        const usersSeries7 = (() => {
+            const arr = new Array(7).fill(0);
+            APP.users.forEach(u => {
+                if (!u.created_at) return;
+                const t = startOfDay(u.created_at);
+                const diff = Math.round((today0 - t) / dayMs);
+                if (diff >= 0 && diff < 7) arr[6 - diff] += 1;
+            });
+            return arr;
+        })();
+        const enrollSeries7 = (() => {
+            const arr = new Array(7).fill(0);
+            APP.enrollments.forEach(e => {
+                const at = e.enrolled_at || e.created_at;
+                if (!at) return;
+                const t = startOfDay(at);
+                const diff = Math.round((today0 - t) / dayMs);
+                if (diff >= 0 && diff < 7) arr[6 - diff] += 1;
+            });
+            return arr;
+        })();
+        // Previous-week totals
+        function prevWeekTotal(filter, valueFn) {
+            let t = 0;
+            APP.orders.forEach(o => {
+                if (!filter(o)) return;
+                const d = startOfDay(o.created_at);
+                const diff = Math.round((today0 - d) / dayMs);
+                if (diff >= 7 && diff < 14) t += (valueFn ? valueFn(o) : 1);
+            });
+            return t;
+        }
+        const prevRev = prevWeekTotal(o => o.status === 'completed', o => (o.total_amount || o.amount || 0));
+        const currRev = revSeries7.reduce((a,b)=>a+b,0);
+        const prevOrders = prevWeekTotal(() => true);
+        const currOrders = orderSeries7.reduce((a,b)=>a+b,0);
+        let prevUsers = 0;
+        APP.users.forEach(u => { if (!u.created_at) return; const d = startOfDay(u.created_at); const diff = Math.round((today0 - d) / dayMs); if (diff >= 7 && diff < 14) prevUsers++; });
+        const currUsers = usersSeries7.reduce((a,b)=>a+b,0);
+        let prevEnroll = 0;
+        APP.enrollments.forEach(e => { const at = e.enrolled_at || e.created_at; if (!at) return; const d = startOfDay(at); const diff = Math.round((today0 - d) / dayMs); if (diff >= 7 && diff < 14) prevEnroll++; });
+        const currEnroll = enrollSeries7.reduce((a,b)=>a+b,0);
+
+        const tCourses = formatTrend(published, Math.max(published - drafts, 0));
+        const tUsers = formatTrend(currUsers, prevUsers);
+        const tRev = formatTrend(currRev, prevRev);
+        const tOrders = formatTrend(currOrders, prevOrders);
+
         document.getElementById('adminContent').innerHTML=`
         <div class="admin-welcome" style="background:linear-gradient(135deg,#0f6fec 0%,#3b82f6 40%,#064299 100%);">
             <div style="position:absolute;top:-30%;right:-10%;width:250px;height:250px;background:rgba(255,255,255,0.05);border-radius:50%;"></div>
@@ -2801,25 +3504,52 @@
                 <button class="btn btn-sm" onclick="exportData()">📥 Export</button>
             </div>
         </div>
-        <div class="admin-stats">
-            <div class="admin-stat-card"><div class="stat-icon">&#x1F4DA;</div><div class="stat-label">Total Courses</div><div class="stat-value">${APP.courses.length}</div><div class="stat-change">&#x2197; ${published} live, ${drafts} draft</div></div>
-            <div class="admin-stat-card"><div class="stat-icon">&#x1F465;</div><div class="stat-label">Total Users</div><div class="stat-value">${APP.users.length}</div><div class="stat-change">&#x2197; ${conversionRate}% conversion</div></div>
-            <div class="admin-stat-card"><div class="stat-icon">&#x1F4B0;</div><div class="stat-label">Total Revenue</div><div class="stat-value">${Utils.formatCurrency(rev)}</div><div class="stat-change">&#x2197; Avg. ${Utils.formatCurrency(avgPrice)}/course</div></div>
-            <div class="admin-stat-card"><div class="stat-icon">&#x1F9FE;</div><div class="stat-label">Orders Today</div><div class="stat-value">${todayOrders}</div><div class="stat-change">${pendingCount} pending approval</div></div>
+        <div class="admin-stats reveal-stagger">
+            <div class="admin-stat-card">
+                <div class="stat-top"><div class="stat-icon">&#x1F4DA;</div>${tCourses.html}</div>
+                <div class="stat-label">Total Courses</div>
+                <div class="stat-value" data-counter="${APP.courses.length}">0</div>
+                <div class="stat-change">${published} live &middot; ${drafts} draft</div>
+                <div class="stat-spark-wrap">${Sparkline([published-drafts<0?0:Math.max(0,published-2),Math.max(0,published-1),published,published,published+1,published,APP.courses.length])}</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="stat-top"><div class="stat-icon">&#x1F465;</div>${tUsers.html}</div>
+                <div class="stat-label">Total Users</div>
+                <div class="stat-value" data-counter="${APP.users.length}">0</div>
+                <div class="stat-change">${conversionRate}% conversion</div>
+                <div class="stat-spark-wrap">${Sparkline(usersSeries7)}</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="stat-top"><div class="stat-icon">&#x1F4B0;</div>${tRev.html}</div>
+                <div class="stat-label">Total Revenue</div>
+                <div class="stat-value" data-counter="${rev}" data-counter-prefix="\u20B9">\u20B90</div>
+                <div class="stat-change">Avg. ${Utils.formatCurrency(avgPrice)}/course</div>
+                <div class="stat-spark-wrap">${Sparkline(revSeries7)}</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="stat-top"><div class="stat-icon">&#x1F9FE;</div>${tOrders.html}</div>
+                <div class="stat-label">Orders Today</div>
+                <div class="stat-value" data-counter="${todayOrders}">0</div>
+                <div class="stat-change">${pendingCount} pending approval</div>
+                <div class="stat-spark-wrap">${Sparkline(orderSeries7)}</div>
+            </div>
         </div>
         <!-- Quick Metrics Bar -->
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:2rem;">
-            <div style="background:linear-gradient(135deg,#dcfce7,#bbf7d0);border-radius:var(--radius);padding:1.25rem;text-align:center;"><div style="font-size:1.5rem;font-weight:800;color:#166534;">${APP.enrollments.length}</div><div style="font-size:0.78rem;color:#166534;opacity:0.8;">Active Enrollments</div></div>
-            <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:var(--radius);padding:1.25rem;text-align:center;"><div style="font-size:1.5rem;font-weight:800;color:#92400e;">${pendingCount}</div><div style="font-size:0.78rem;color:#92400e;opacity:0.8;">Pending Approvals</div></div>
-            <div style="background:linear-gradient(135deg,#ede9fe,#ddd6fe);border-radius:var(--radius);padding:1.25rem;text-align:center;"><div style="font-size:1.5rem;font-weight:800;color:#5b21b6;">${APP.orders.filter(o=>o.status==='completed').length}</div><div style="font-size:0.78rem;color:#5b21b6;opacity:0.8;">Completed Sales</div></div>
+            <div style="background:linear-gradient(135deg,#dcfce7,#bbf7d0);border-radius:var(--radius);padding:1.25rem;text-align:center;"><div style="font-size:1.5rem;font-weight:800;color:#166534;" data-counter="${APP.enrollments.length}">0</div><div style="font-size:0.78rem;color:#166534;opacity:0.8;">Active Enrollments</div></div>
+            <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:var(--radius);padding:1.25rem;text-align:center;"><div style="font-size:1.5rem;font-weight:800;color:#92400e;" data-counter="${pendingCount}">0</div><div style="font-size:0.78rem;color:#92400e;opacity:0.8;"><span class="status-dot ${pendingCount?'pending':''}"></span>Pending Approvals</div></div>
+            <div style="background:linear-gradient(135deg,#ede9fe,#ddd6fe);border-radius:var(--radius);padding:1.25rem;text-align:center;"><div style="font-size:1.5rem;font-weight:800;color:#5b21b6;" data-counter="${APP.orders.filter(o=>o.status==='completed').length}">0</div><div style="font-size:0.78rem;color:#5b21b6;opacity:0.8;">Completed Sales</div></div>
         </div>
-        <!-- Revenue Chart Placeholder -->
+        <!-- Revenue Chart -->
         <div style="background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius-lg);padding:1.5rem;margin-bottom:2rem;">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--gray-900);">📈 Revenue Overview</h3>
-            <div style="display:flex;align-items:end;gap:6px;height:120px;padding:0.5rem 0;">
-                ${(() => { const last7=Array.from({length:7},(_,d)=>{const date=new Date();date.setDate(date.getDate()-6+d);return APP.orders.filter(o=>o.status==='completed'&&new Date(o.created_at).toDateString()===date.toDateString()).reduce((a,o)=>a+(o.total_amount||o.amount||0),0);}); const max=Math.max(...last7,1); return last7.map((v,i)=>{const h=Math.max((v/max)*100,4);const day=new Date();day.setDate(day.getDate()-6+i);return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><div style="width:100%;background:linear-gradient(180deg,var(--primary),#3b82f6);border-radius:4px 4px 0 0;height:'+h+'%;min-height:4px;transition:height 0.5s;" title="'+Utils.formatCurrency(v)+'"></div><span style="font-size:0.6rem;color:var(--gray-600);">'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day.getDay()]+'</span></div>';}).join(''); })()}
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+                <h3 style="font-size:1rem;font-weight:700;color:var(--gray-900);">📈 Revenue Overview <span style="font-weight:400;font-size:0.78rem;color:var(--gray-600);">&middot; Last 7 days</span></h3>
+                ${tRev.html}
             </div>
-            <div style="display:flex;justify-content:space-between;margin-top:0.75rem;font-size:0.75rem;color:var(--gray-600);"><span>Last 7 days</span><span>Total: ${Utils.formatCurrency(APP.orders.filter(o=>o.status==='completed').reduce((a,o)=>a+(o.total_amount||o.amount||0),0))}</span></div>
+            <div style="display:flex;align-items:end;gap:6px;height:140px;padding:0.5rem 0;">
+                ${(() => { const max=Math.max(...revSeries7,1); return revSeries7.map((v,i)=>{const h=Math.max((v/max)*100,4);const day=new Date(today0 - (6-i)*dayMs);return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;"><div style="width:100%;background:linear-gradient(180deg,var(--primary),#3b82f6);border-radius:6px 6px 0 0;height:'+h+'%;min-height:4px;transition:height 0.6s cubic-bezier(0.2,0.9,0.3,1.1);box-shadow:0 -2px 6px rgba(15,111,236,0.15);" title="'+Utils.formatCurrency(v)+'"></div><span style="font-size:0.62rem;color:var(--gray-600);font-weight:600;">'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day.getDay()]+'</span></div>';}).join(''); })()}
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:0.75rem;font-size:0.75rem;color:var(--gray-600);"><span>Week total: <strong style="color:var(--gray-900);">${Utils.formatCurrency(currRev)}</strong></span><span>vs prev week: <strong style="color:var(--gray-900);">${Utils.formatCurrency(prevRev)}</strong></span></div>
         </div>
         <div class="admin-grid-2">
             <div class="admin-activity"><h3>&#x1F4CB; Recent Orders</h3>${recentOrders.length?recentOrders.map(o=>'<div class="activity-item"><div class="activity-dot '+(o.status==='completed'?'green':o.status==='pending'?'yellow':'')+'"></div><div><div class="activity-text"><strong>'+Utils.escapeHtml(o.profiles?.full_name||'User')+'</strong> purchased '+Utils.escapeHtml(o.courses?.title||'a course')+' for '+Utils.formatCurrency(o.total_amount||o.amount||0)+'</div><div class="activity-time">'+Utils.formatDate(o.created_at)+' &middot; <span class="status-badge status-'+(o.status==='completed'?'active':o.status==='pending'?'draft':'inactive')+'" style="font-size:0.65rem;">'+o.status+'</span></div></div></div>').join(''):'<p style="font-size:0.85rem;color:var(--gray-300);padding:1rem 0;">No orders yet</p>'}</div>
@@ -2827,8 +3557,18 @@
         </div>
         <!-- Keyboard Shortcuts Info -->
         <div style="margin-top:2rem;padding:1rem 1.5rem;background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius);font-size:0.8rem;color:var(--gray-600);">
-            <strong>⌨️ Keyboard Shortcuts:</strong> <code style="background:var(--gray-100);padding:0.15rem 0.4rem;border-radius:4px;">R</code> Refresh &nbsp; <code style="background:var(--gray-100);padding:0.15rem 0.4rem;border-radius:4px;">N</code> New Course &nbsp; <code style="background:var(--gray-100);padding:0.15rem 0.4rem;border-radius:4px;">Esc</code> Close Panel
+            <strong>⌨️ Keyboard Shortcuts:</strong> <span class="kbd">R</span> Refresh &nbsp; <span class="kbd">N</span> New Course &nbsp; <span class="kbd">G</span> then <span class="kbd">D</span>/<span class="kbd">C</span>/<span class="kbd">U</span>/<span class="kbd">O</span>/<span class="kbd">B</span> Jump tabs &nbsp; <span class="kbd">/</span> Search &nbsp; <span class="kbd">?</span> Help &nbsp; <span class="kbd">Esc</span> Close
         </div>`;
+
+        // Animate counters + reveal stagger
+        setTimeout(() => {
+            document.querySelectorAll('#adminContent [data-counter]').forEach(el => {
+                const to = Number(el.dataset.counter) || 0;
+                const prefix = el.dataset.counterPrefix || '';
+                Counters.animate(el, to, { duration: 850, prefix });
+            });
+            if (typeof Reveals !== 'undefined') Reveals.init(document.getElementById('adminContent'));
+        }, 30);
     }
     async function refreshAdminData() { showToast('Refreshing...','warning'); await Promise.all([fetchCourses(),fetchUsers(),fetchOrders()]); updateSidebarCounts(); const active=document.querySelector('.admin-sidebar-item.active'); const tab=active?.textContent?.includes('Dashboard')?'dashboard':active?.textContent?.includes('Courses')?'courses':active?.textContent?.includes('Users')?'users':active?.textContent?.includes('Orders')?'orders':'courses'; switchAdminTab(tab,active); showToast('Data refreshed!'); }
 
@@ -3421,6 +4161,7 @@
             if(error) throw error;
             await fetchMyOrders(); renderCourses(); renderPricingPlans();
             showToast('Payment submitted! Admin will verify and grant access shortly.','success');
+            if (typeof confettiBurst === 'function') confettiBurst({ count: 90 });
         } catch(e){
             console.error('submitPayment error:',e);
             showToast('Error: '+(e.message||'Failed'),'error');
@@ -3473,6 +4214,7 @@
                 }
 
                 showToast('Payment approved! User can now access the course.','success');
+                if (typeof confettiBurst === 'function') confettiBurst({ count: 70 });
                 await fetchOrders(); renderAdminOrders(); updateSidebarCounts();
             } catch(e){
                 console.error('approveOrder failed:', e);
