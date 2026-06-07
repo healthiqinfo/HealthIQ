@@ -1,35 +1,40 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.15 — Smarter source classification in the Settings diagnostic.
-   * Problem: the v1.6.14 diagnostic flagged settings whose DB row exists
-     but with an empty value (e.g. hero_title = '') as 🟡 MISMATCH —
-     misleading, because fetchSettings() intentionally treats empty
-     values as "fall back to default". The admin saw a scary amber
-     warning for what is actually correct behaviour.
+   v1.6.16 — Fix the broken wa.me/91 link bug (truncated WhatsApp number).
+   * Problem: user reported the FAB WhatsApp button opened
+     https://api.whatsapp.com/send/?phone=91&text&type=phone_number&app_absent=0
+     — phone=91 only, not their full 12-digit number. Root cause: the
+     DEFAULT_SETTINGS.whatsapp_number was set to the placeholder
+     '91XXXXXXXXXX', and our defensive .replace(/\D/g, '') stripped the
+     X chars leaving just '91'. When the FAB fell back to this default
+     (race condition: clicked before fetchSettings hydrated APP.settings,
+     or DB read failed), the resolved value was '91' → wa.me/91 →
+     WhatsApp's broken redirect URL.
    * Fix:
-     1. Source classification now distinguishes two flavours of default:
-          🟠 DEFAULT (DB empty)  — row exists but value is '' → UI falls
-                                    back to default (intentional, not a fault)
-          🔴 DEFAULT (no row)    — no row at all → UI falls back to default
-                                    (probably means the section was never
-                                    saved, more likely to be unintentional)
-        🟡 MISMATCH is now ONLY raised when DB has a NON-EMPTY value
-        that differs from the cached value (the genuine stale-tab case).
-     2. New informational banner appears when settings are 🟠 — it's not
-        flagged as an issue, just a heads-up listing the affected keys
-        and explaining the one-click fix (fill the field, save again).
-     3. Success banner now reports "X of Y tracked keys sourced from
-        database" so the admin can confirm at a glance.
-   * Why this matters: every prior "is my save working?" question now
-     gets a clear visual answer without false-positive warnings.
+     1. DEFAULT_SETTINGS.whatsapp_number and contact_email are now both
+        EMPTY strings. A placeholder pattern that strips to something
+        shorter than a real value is more dangerous than no default at
+        all — empty values cleanly trigger the "being set up" toast and
+        hide the footer link.
+     2. FAB whatsapp action now validates the resolved number is 10-15
+        digits (E.164 phone-number length) BEFORE opening wa.me/. Any
+        shorter and it's a malformed/placeholder → show the friendly
+        toast + log a console.warn with the rejected value for debugging.
+     3. Footer WhatsApp link applies the same min-10-digit guard. If
+        the resolved number is too short, the link stays hidden instead
+        of rendering as a clickable but broken link.
+   * Why this matters: even if someone in the future adds another
+     placeholder default by mistake, the link can never open a
+     half-formed wa.me URL. The contract is now strict: must be a real
+     phone number or nothing at all.
+   Carries forward from v1.6.15:
+   * Smart source classification (DEFAULT (DB empty) vs DEFAULT (no row)).
+   * Friendly info banner for empty-row defaults instead of false alarms.
    Carries forward from v1.6.14:
-   * Live database diagnostic panel at top of Settings tab.
-   * Auto-runs on tab open and after every save.
+   * Live database diagnostic panel in admin Settings.
    * Test-write probe catches silent RLS blocks.
    Carries forward from v1.6.13:
-   * Verified-save via .upsert(...).select() on every settings write.
-   * Detailed Supabase error formatting (RLS / missing-table patterns).
-   * WhatsApp digits-only normalisation + length validation. */
-const VERSION = 'hiq-v1.6.15';
+   * Verified-save via .upsert(...).select() on every settings write. */
+const VERSION = 'hiq-v1.6.16';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

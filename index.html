@@ -4709,7 +4709,14 @@
                             'DEFAULT_SETTINGS.whatsapp_number': fromDefault || '(empty)',
                             'resolved': num || '(none)'
                         });
-                        if (!num) {
+                        // v1.6.16 — Min-length guard. A real phone number with
+                        // country code is 10-15 digits (E.164). Anything shorter
+                        // means we resolved a malformed/placeholder value and would
+                        // open a broken wa.me link (e.g. wa.me/91 redirected to
+                        // api.whatsapp.com/send/?phone=91 — the bug the user
+                        // reported). Treat as "not configured" → friendly toast.
+                        if (!num || num.length < 10 || num.length > 15) {
+                            console.warn('[FAB WhatsApp] resolved number rejected — length=' + num.length + ', value="' + num + '". Not opening wa.me to avoid a broken link.');
                             showToast('WhatsApp contact is being set up. Please try again in a moment or use the contact email.', 'info');
                             return;
                         }
@@ -5107,8 +5114,16 @@
         stat_4_value: '50', stat_4_label: 'Expert Authors',
         courses_title: 'BHMS & MD Notes',
         courses_subtitle: 'Expertly curated, high-yield notes for BHMS exams and MD Homoeopathy preparation.',
-    whatsapp_number: '91XXXXXXXXXX',
-        contact_email: 'support@healthiq.in',
+    // v1.6.16 — Contact defaults are intentionally EMPTY so a race condition
+    // (e.g. user clicks the FAB before fetchSettings() finishes hydrating
+    // APP.settings) can never produce a broken link. Previous default like
+    // '91XXXXXXXXXX' for whatsapp_number had a subtle bug: stripping the
+    // 'X' placeholder chars left only '91', which made wa.me/91 redirect to
+    // the broken api.whatsapp.com URL. With empty defaults, missing contact
+    // info instead surfaces as a friendly "being set up" toast and the footer
+    // link stays hidden — never a half-formed number or fake email shown.
+    whatsapp_number: '',
+        contact_email: '',
         footer_description: 'Premium BHMS & MD Homoeopathy notes crafted by a Gold Medalist for aspiring doctors and homoeopathic practitioners worldwide.',
         testimonials: JSON.stringify([
             {initials:'AS',name:'Dr. Ananya Sharma',role:'BHMS, NIH Kolkata',text:'These notes are a lifesaver for BHMS exams. The Materia Medica notes helped me score distinction!'},
@@ -5453,9 +5468,13 @@
         }
         // Footer WhatsApp — pretty-format the number for India (+91 XXXXX XXXXX) when 12 digits,
         // otherwise just show the +<digits>. Hide if no number set.
+        // v1.6.16 — Also hide if the resolved number is too short to be a real
+        // phone number (10-15 digits per E.164). Stops half-formed defaults
+        // from rendering as a clickable but broken WhatsApp link.
         const fw = document.getElementById('footerWhatsapp');
         if (fw) {
-            if (waNum) {
+            const waValid = waNum && waNum.length >= 10 && waNum.length <= 15;
+            if (waValid) {
                 fw.href = 'https://wa.me/' + waNum;
                 const pretty = (waNum.length === 12)
                     ? ('+' + waNum.slice(0, 2) + ' ' + waNum.slice(2, 7) + ' ' + waNum.slice(7))
