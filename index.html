@@ -1955,6 +1955,7 @@
     const SUPABASE_URL = 'https://ejpwabynzdjfecsrgumh.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqcHdhYnluemRqZmVjc3JndW1oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NjMyOTksImV4cCI6MjA5NTUzOTI5OX0.fKnfwX3Ckr8hxEOZfaGKrT2oh0XDxKupEL4L5RgQd2s';
     var db = null;
+    var _appInitDone = false; // guard so appInit() only runs once even if called multiple times
     (function() {
         const memStore = {};
         const iframeStorage = {
@@ -1966,7 +1967,29 @@
         function loadSDK() {
             const s = document.createElement('script');
             s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
-            s.onload = () => { db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {auth:{persistSession:true,storageKey:'healthiq-auth',storage:iframeStorage,autoRefreshToken:true,detectSessionInUrl:true}}); document.getElementById('offlineBanner').classList.remove('active'); if(typeof appInit==='function') appInit(); };
+            s.onload = () => {
+                try {
+                    db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                        auth: {
+                            persistSession: true,
+                            storageKey: 'healthiq-auth',
+                            storage: iframeStorage,
+                            autoRefreshToken: true,
+                            detectSessionInUrl: true
+                        }
+                    });
+                } catch(e){
+                    console.error('Supabase init failed:', e);
+                    document.getElementById('offlineBanner')?.classList.add('active');
+                    return;
+                }
+                document.getElementById('offlineBanner')?.classList.remove('active');
+                // Guard against double init (e.g. if the SDK reloads after a network blip).
+                if (!_appInitDone && typeof appInit === 'function') {
+                    _appInitDone = true;
+                    appInit();
+                }
+            };
             s.onerror = () => { retries++; if(retries<maxRetries){setTimeout(loadSDK,2000*retries);}else{document.getElementById('offlineBanner').classList.add('active');showToast('Connection failed after '+maxRetries+' attempts. Please refresh.','error');} };
             document.head.appendChild(s);
         }
@@ -2052,21 +2075,47 @@
 
     async function fetchSettings() {
         if(!isSupabaseConfigured()) return;
-        try { const {data,error}=await db.from('site_settings').select('key,value'); if(!error&&data) data.forEach(r=>APP.settings[r.key]=r.value); } catch(e){}
+        try {
+            const {data,error}=await db.from('site_settings').select('key,value');
+            if(error) { console.warn('fetchSettings error:', error); }
+            else if(data) data.forEach(r=>APP.settings[r.key]=r.value);
+        } catch(e){ console.warn('fetchSettings exception:', e); }
         // Merge defaults for missing keys
         for(const k in DEFAULT_SETTINGS){ if(!APP.settings[k]) APP.settings[k]=DEFAULT_SETTINGS[k]; }
         applySettings();
     }
     async function saveSetting(key,value) {
         if(!isSupabaseConfigured()) return;
+        // Optimistic update — remember previous value so we can roll back if the
+        // write fails (otherwise local UI shows the new value but DB still has old).
+        const prev = APP.settings[key];
         APP.settings[key]=value;
-        try { const {error}=await db.from('site_settings').upsert({key,value,updated_at:new Date().toISOString()},{onConflict:'key'}); if(error)throw error; } catch(e){showToast('Save error: '+e.message,'error');}
+        try {
+            const {error}=await db.from('site_settings').upsert({key,value,updated_at:new Date().toISOString()},{onConflict:'key'});
+            if(error) throw error;
+        } catch(e){
+            APP.settings[key] = prev; // rollback
+            showToast('Save error: '+e.message,'error');
+        }
     }
     async function saveMultipleSettings(obj) {
         if(!isSupabaseConfigured()) return;
         const rows=Object.entries(obj).map(([key,value])=>({key,value,updated_at:new Date().toISOString()}));
+        // Snapshot previous values for rollback on failure.
+        const prev = {};
+        for(const k in obj){ prev[k] = APP.settings[k]; }
         Object.assign(APP.settings, obj);
-        try { const {error}=await db.from('site_settings').upsert(rows,{onConflict:'key'}); if(error)throw error; showToast('Settings saved!'); applySettings(); } catch(e){showToast('Save error: '+e.message,'error');}
+        try {
+            const {error}=await db.from('site_settings').upsert(rows,{onConflict:'key'});
+            if(error) throw error;
+            showToast('Settings saved!');
+            applySettings();
+        } catch(e){
+            // Roll back local state so UI matches DB.
+            for(const k in prev){ if(prev[k]===undefined) delete APP.settings[k]; else APP.settings[k]=prev[k]; }
+            applySettings();
+            showToast('Save error: '+e.message,'error');
+        }
     }
     function applySettings() {
         const s=APP.settings;
@@ -2204,9 +2253,36 @@
         } catch(e) { console.error(e); APP.courses = []; }
         renderCourses(); renderPricingPlans();
     }
-    async function fetchUsers() { if(!isSupabaseConfigured()) return; try { const {data}=await db.from('profiles').select('*').order('created_at',{ascending:false}); APP.users=data||[]; const {data:e}=await db.from('enrollments').select('*, profiles(full_name,email), courses(title,category,price)').order('enrolled_at',{ascending:false}); APP.enrollments=e||[]; } catch(e){} }
-    async function fetchOrders() { if(!isSupabaseConfigured()) return; try { const {data,error}=await db.from('orders').select('*, profiles(full_name,email), courses(title,category)').order('created_at',{ascending:false}); if(error){console.error('fetchOrders error:',error);showToast('Orders fetch error: '+error.message,'error');} APP.orders=data||[]; } catch(e){console.error('fetchOrders:',e);} }
-    async function fetchMyEnrollments() { if(!APP.currentUser) { APP.myEnrollments=[]; return; } try { const {data,error}=await db.from('enrollments').select('id,user_id,course_id,status,progress').eq('user_id',APP.currentUser.id); console.log('fetchMyEnrollments:',{data,error}); if(!error)APP.myEnrollments=data||[]; else APP.myEnrollments=[]; } catch(e){ console.error('fetchMyEnrollments:',e); APP.myEnrollments=[]; } }
+    async function fetchUsers() {
+        if(!isSupabaseConfigured()) return;
+        try {
+            // profiles and enrollments are independent → fetch in parallel.
+            const [usersRes, enrollRes] = await Promise.all([
+                db.from('profiles').select('*').order('created_at',{ascending:false}),
+                db.from('enrollments').select('*, profiles(full_name,email), courses(title,category,price)').order('enrolled_at',{ascending:false})
+            ]);
+            if(usersRes.error) console.warn('fetchUsers profiles error:', usersRes.error);
+            if(enrollRes.error) console.warn('fetchUsers enrollments error:', enrollRes.error);
+            APP.users = usersRes.data || [];
+            APP.enrollments = enrollRes.data || [];
+        } catch(e){ console.error('fetchUsers exception:', e); }
+    }
+    async function fetchOrders() {
+        if(!isSupabaseConfigured()) return;
+        try {
+            const {data,error}=await db.from('orders').select('*, profiles(full_name,email), courses(title,category)').order('created_at',{ascending:false});
+            if(error){ console.error('fetchOrders error:',error); showToast('Orders fetch error: '+error.message,'error'); APP.orders = []; return; }
+            APP.orders = data || [];
+        } catch(e){ console.error('fetchOrders exception:',e); APP.orders = []; }
+    }
+    async function fetchMyEnrollments() {
+        if(!APP.currentUser) { APP.myEnrollments=[]; return; }
+        try {
+            const {data,error}=await db.from('enrollments').select('id,user_id,course_id,status,progress').eq('user_id',APP.currentUser.id);
+            if(error){ console.warn('fetchMyEnrollments error:', error); APP.myEnrollments=[]; return; }
+            APP.myEnrollments = data || [];
+        } catch(e){ console.error('fetchMyEnrollments exception:',e); APP.myEnrollments=[]; }
+    }
 
     async function saveCourseToDb(d) {
         if(!isSupabaseConfigured()) return {success:false};
@@ -2236,9 +2312,10 @@
             (async () => {
                 try {
                     const childTables = ['enrollments','orders','course_views','study_sessions','bookmarks','reviews','course_modules','lessons','order_items'];
-                    for(const t of childTables){
-                        try { await db.from(t).delete().eq('course_id', id); } catch(_){}
-                    }
+                    // Run all child-table deletes in parallel; each is independent.
+                    await Promise.all(childTables.map(t =>
+                        db.from(t).delete().eq('course_id', id).then(() => {}, () => {})
+                    ));
                     await db.from('courses').delete().eq('id', id);
                 } catch(_){ /* silent — soft delete already succeeded */ }
             })();
@@ -2251,6 +2328,36 @@
     }
 
     // ===== AUTH =====
+    // Guards against duplicate work when both initAuth() and the onAuthStateChange
+    // listener try to hydrate the user/profile at the same time (page load race).
+    let _authHydrating = null; // Promise<void> | null
+    let _authListenerBound = false;
+
+    async function hydrateUserFromSession(session) {
+        if (!session?.user) return;
+        // Coalesce parallel callers so we only fetch the profile + related lists once.
+        if (_authHydrating) return _authHydrating;
+        _authHydrating = (async () => {
+            try {
+                const { data: p, error: pe } = await db.from('profiles').select('*').eq('id', session.user.id).single();
+                if (pe) console.warn('hydrateUserFromSession profile error:', pe);
+                const role = p?.role || (session.user.email === 'thehealthiqinfo@gmail.com' ? 'admin' : 'student');
+                APP.currentUser = {
+                    id: session.user.id,
+                    name: p?.full_name || session.user.email.split('@')[0],
+                    email: session.user.email,
+                    role: role
+                };
+                APP.userProfile = p || null;
+                // Independent reads — run in parallel for faster cold start.
+                await Promise.all([fetchMyEnrollments(), fetchMyOrders()]);
+            } finally {
+                _authHydrating = null;
+            }
+        })();
+        return _authHydrating;
+    }
+
     async function handleLogin(event) {
         event.preventDefault();
         const email=document.getElementById('loginEmail').value.trim(), pass=document.getElementById('loginPassword').value;
@@ -2266,7 +2373,10 @@
             const role = profile?.role || (data.user.email === 'thehealthiqinfo@gmail.com' ? 'admin' : 'student');
             if(role==='admin' && profile && profile.role!=='admin'){ try{await db.from('profiles').update({role:'admin'}).eq('id',data.user.id);}catch(e){} }
             APP.currentUser={id:data.user.id,name:profile?.full_name||email.split('@')[0],email:data.user.email,role:role};
-            APP.userProfile=profile; closeModal('login'); updateAuthUI(); await fetchMyEnrollments(); await fetchMyOrders(); await fetchCourses();
+            APP.userProfile=profile;
+            closeModal('login'); updateAuthUI();
+            // Independent fetches — run in parallel for faster post-login UI refresh.
+            await Promise.all([fetchMyEnrollments(), fetchMyOrders(), fetchCourses()]);
             showToast('Welcome back, '+Utils.escapeHtml(APP.currentUser.name)+'!');
         } catch(e){showToast(e.message||'Login failed','error');} finally{btn.classList.remove('btn-loading');btn.disabled=false;}
     }
@@ -2280,7 +2390,20 @@
         const btn=document.getElementById('registerBtn'); btn.classList.add('btn-loading'); btn.disabled=true;
         try {
             const {data,error}=await db.auth.signUp({email:em,password:pw,options:{data:{full_name:fn+' '+ln,first_name:fn,last_name:ln,username:un}}}); if(error)throw error;
-            if(data.user&&data.session){await new Promise(r=>setTimeout(r,800)); const{data:p}=await db.from('profiles').select('*').eq('id',data.user.id).single(); APP.userProfile=p; APP.currentUser={id:data.user.id,name:fn+' '+ln,email:em,role:'student'}; closeModal('register'); updateAuthUI(); renderCourses(); showToast('Account created! Welcome!');}
+            if(data.user&&data.session){
+                // Poll briefly for the profile row created by the DB trigger
+                // (replaces brittle setTimeout(800ms) — handles slow triggers + retries).
+                let p = null;
+                for (let attempt = 0; attempt < 6 && !p; attempt++) {
+                    const { data: row } = await db.from('profiles').select('*').eq('id', data.user.id).maybeSingle();
+                    if (row) { p = row; break; }
+                    await new Promise(r => setTimeout(r, 250 + attempt * 150)); // 250, 400, 550, 700, 850, 1000 ms
+                }
+                APP.userProfile = p;
+                APP.currentUser = { id: data.user.id, name: fn+' '+ln, email: em, role: p?.role || 'student' };
+                closeModal('register'); updateAuthUI(); renderCourses();
+                showToast('Account created! Welcome!');
+            }
             else{closeModal('register');
                 let m=document.getElementById('verifyModal'); if(!m){m=document.createElement('div');m.id='verifyModal';m.className='modal-overlay';document.body.appendChild(m);}
                 m.innerHTML='<div class="modal" style="max-width:420px;text-align:center;"><button class="modal-close" onclick="document.getElementById(\'verifyModal\').classList.remove(\'active\')">&times;</button><div style="font-size:3rem;margin-bottom:1rem;">📧</div><h2 style="font-size:1.3rem;">Check Your Email</h2><p style="color:var(--gray-600);margin:1rem 0;">We sent a verification link to <strong>'+Utils.escapeHtml(em)+'</strong>. Please click the link in your email to activate your account.</p><p style="color:var(--gray-600);font-size:0.85rem;">Didn\'t receive it? Check your spam folder or try registering again.</p><button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:1.5rem;" onclick="document.getElementById(\'verifyModal\').classList.remove(\'active\')">Got it!</button></div>';
@@ -2288,13 +2411,55 @@
         } catch(e){showToast(e.message||'Registration failed','error');} finally{btn.classList.remove('btn-loading');btn.disabled=false;}
     }
 
-    async function logout() { if(!isSupabaseConfigured())return; await db.auth.signOut(); APP.currentUser=null; APP.userProfile=null; APP.myEnrollments=[]; APP.myOrders=[]; updateAuthUI(); closeAdminPanel(); renderCourses(); renderPricingPlans(); showToast('Logged out'); document.getElementById('userMenu').classList.remove('active'); }
+    async function logout() {
+        if(!isSupabaseConfigured())return;
+        try { await db.auth.signOut(); } catch(e){ console.warn('signOut error:', e); }
+        // Local state cleanup (the SIGNED_OUT listener will also clean, but doing
+        // it here too makes the UI update instant even if the listener is delayed).
+        APP.currentUser=null; APP.userProfile=null; APP.myEnrollments=[]; APP.myOrders=[];
+        updateAuthUI(); closeAdminPanel(); renderCourses(); renderPricingPlans();
+        showToast('Logged out');
+        document.getElementById('userMenu').classList.remove('active');
+    }
 
     async function initAuth() {
         if(!isSupabaseConfigured()){updateAuthUI();return;}
-        try{const{data:{session}}=await db.auth.getSession(); if(session?.user){const{data:p}=await db.from('profiles').select('*').eq('id',session.user.id).single(); const r=p?.role||(session.user.email==='thehealthiqinfo@gmail.com'?'admin':'student'); APP.currentUser={id:session.user.id,name:p?.full_name||session.user.email.split('@')[0],email:session.user.email,role:r}; APP.userProfile=p; await fetchMyEnrollments(); await fetchMyOrders(); renderCourses();}}catch(e){}
+        try {
+            const { data: { session } } = await db.auth.getSession();
+            if (session?.user) {
+                await hydrateUserFromSession(session);
+                renderCourses();
+            }
+        } catch(e) { console.warn('initAuth getSession error:', e); }
         updateAuthUI();
-        db.auth.onAuthStateChange(async(ev,session)=>{if(ev==='SIGNED_OUT'){APP.currentUser=null;APP.userProfile=null;APP.myEnrollments=[];APP.orders=[];APP.myOrders=[];updateAuthUI();renderCourses();renderPricingPlans();}else if((ev==='SIGNED_IN'||ev==='TOKEN_REFRESHED')&&session?.user&&!APP.currentUser){const{data:p}=await db.from('profiles').select('*').eq('id',session.user.id).single();const r=p?.role||(session.user.email==='thehealthiqinfo@gmail.com'?'admin':'student');APP.currentUser={id:session.user.id,name:p?.full_name||session.user.email.split('@')[0],email:session.user.email,role:r};APP.userProfile=p;await fetchMyEnrollments();await fetchMyOrders();updateAuthUI();renderCourses();renderPricingPlans();}});
+
+        // Bind the auth state listener exactly once. Re-binding (e.g. after a
+        // hot-reload) would multiply renders and DB hits on every token refresh.
+        if (_authListenerBound) return;
+        _authListenerBound = true;
+        db.auth.onAuthStateChange(async (ev, session) => {
+            try {
+                if (ev === 'SIGNED_OUT') {
+                    APP.currentUser = null; APP.userProfile = null;
+                    APP.myEnrollments = []; APP.orders = []; APP.myOrders = [];
+                    updateAuthUI(); renderCourses(); renderPricingPlans();
+                    return;
+                }
+                // SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED — only hydrate if we
+                // don't already have this user loaded (avoids duplicate fetches
+                // on token refresh that fires every ~60 minutes).
+                if ((ev === 'SIGNED_IN' || ev === 'TOKEN_REFRESHED' || ev === 'USER_UPDATED')
+                    && session?.user
+                    && (!APP.currentUser || APP.currentUser.id !== session.user.id)) {
+                    await hydrateUserFromSession(session);
+                    updateAuthUI(); renderCourses(); renderPricingPlans();
+                }
+            } catch (err) {
+                // Supabase doesn't await this callback, so an unhandled rejection
+                // would crash silently. Log it instead.
+                console.error('onAuthStateChange handler error:', err);
+            }
+        });
     }
 
     function updateAuthUI() {
@@ -2353,7 +2518,12 @@
         document.getElementById('userAvatarBtn')?.setAttribute('aria-expanded', 'false');
         document.getElementById('adminUserLabel').textContent=APP.currentUser.name;
         renderAdminDashboard();
-        try{ await fetchCourses(); await fetchSettings(); await fetchOrders(); updateSidebarCounts(); renderAdminDashboard(); }catch(e){ console.error('Admin fetch error:',e); }
+        try {
+            // All three reads are independent — parallel for instant panel load.
+            await Promise.all([fetchCourses(), fetchSettings(), fetchOrders()]);
+            updateSidebarCounts();
+            renderAdminDashboard();
+        } catch(e){ console.error('Admin fetch error:',e); }
     }
     function closeAdminPanel() { Overlay.close('adminPanel'); }
     function updateSidebarCounts() { const cc=document.getElementById('sidebarCourseCount'),uc=document.getElementById('sidebarUserCount'),oc=document.getElementById('sidebarOrderCount'),nc=document.getElementById('sidebarNotifCount'); if(cc)cc.textContent=APP.courses.length; if(uc)uc.textContent=APP.users.length; if(oc)oc.textContent=APP.orders.length; const pending=APP.orders.filter(o=>o.status==='pending').length; if(nc){nc.textContent=pending;nc.style.display=pending?'inline':'none';} document.getElementById('lastSyncTime').textContent=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}); }
@@ -2485,15 +2655,43 @@
         const pending=APP.orders.filter(o=>o.status==='pending');
         if(!pending.length)return;
         adminConfirm('Approve ALL '+pending.length+' pending payments? This will grant course access to all.', async()=>{
-            let success=0;
-            for(const o of pending){
-                try{
-                    await db.from('orders').update({status:'completed',payment_verified:true,paid_at:new Date().toISOString()}).eq('id',o.id);
-                    await db.from('enrollments').insert({user_id:o.user_id,course_id:o.course_id,order_id:o.id,status:'active',progress:0});
-                    success++;
-                }catch(e){console.error(e);}
-            }
-            showToast(success+' orders approved!');
+            // Process all approvals in parallel. Each item still does its own
+            // enrollment-first / order-update / rollback dance for consistency.
+            const results = await Promise.all(pending.map(async o => {
+                let enrollmentId = null;
+                try {
+                    const enrollPayload = {
+                        user_id: o.user_id,
+                        course_id: o.course_id,
+                        order_id: o.id,
+                        status: 'active',
+                        progress: 0,
+                        enrolled_at: new Date().toISOString()
+                    };
+                    const { data: ed, error: ee } = await db.from('enrollments').insert(enrollPayload).select().single();
+                    if (ee) {
+                        if (ee.code === '23505' || /duplicate|unique/i.test(ee.message||'')) {
+                            const { data: existing } = await db.from('enrollments')
+                                .select('id').eq('user_id', o.user_id).eq('course_id', o.course_id).maybeSingle();
+                            if (existing) enrollmentId = existing.id;
+                            else return { ok:false, id:o.id, err: ee };
+                        } else { return { ok:false, id:o.id, err: ee }; }
+                    } else { enrollmentId = ed?.id || null; }
+
+                    const { error: oe } = await db.from('orders')
+                        .update({ status:'completed', payment_verified:true, paid_at:new Date().toISOString() })
+                        .eq('id', o.id);
+                    if (oe) {
+                        if (enrollmentId) { try { await db.from('enrollments').delete().eq('id', enrollmentId); } catch(_){} }
+                        return { ok:false, id:o.id, err: oe };
+                    }
+                    return { ok:true, id:o.id };
+                } catch(e){ return { ok:false, id:o.id, err:e }; }
+            }));
+            const success = results.filter(r=>r.ok).length;
+            const failed = results.length - success;
+            if (failed) console.warn('approveAllPending failures:', results.filter(r=>!r.ok));
+            showToast(success+' orders approved'+(failed?(', '+failed+' failed'):'')+'!', failed?'warning':'success');
             await fetchOrders(); updateSidebarCounts(); renderAdminNotifications();
         });
     }
@@ -2566,9 +2764,58 @@
         </div>`;
     }
 
-    async function bulkPublishAll() { adminConfirm('Publish ALL draft courses?', async()=>{ try{const ids=APP.courses.filter(c=>!c.is_published).map(c=>c.id); for(const id of ids){await db.from('courses').update({is_published:true,published_at:new Date().toISOString()}).eq('id',id);} showToast(ids.length+' courses published!'); await fetchCourses(); updateSidebarCounts(); renderAdminBulkActions();}catch(e){showToast('Error: '+e.message,'error');} }); }
-    async function bulkUnpublishAll() { adminConfirm('Unpublish ALL live courses? They will become drafts.', async()=>{ try{const ids=APP.courses.filter(c=>c.is_published).map(c=>c.id); for(const id of ids){await db.from('courses').update({is_published:false}).eq('id',id);} showToast(ids.length+' courses unpublished!'); await fetchCourses(); updateSidebarCounts(); renderAdminBulkActions();}catch(e){showToast('Error: '+e.message,'error');} }); }
-    async function bulkApplyDiscount() { const pct=parseFloat(document.getElementById('bulkDiscountPercent').value); if(!pct||pct<=0||pct>=100){showToast('Enter a valid discount % (1-99)','error');return;} adminConfirm('Apply '+pct+'% discount to ALL courses?', async()=>{ try{for(const c of APP.courses){const newPrice=Math.round(c.price*(1-pct/100)); await db.from('courses').update({price:newPrice,original_price:c.price}).eq('id',c.id);} showToast('Discount applied!'); await fetchCourses(); renderAdminBulkActions();}catch(e){showToast('Error: '+e.message,'error');} }); }
+    async function bulkPublishAll() {
+        adminConfirm('Publish ALL draft courses?', async()=>{
+            try {
+                const ids = APP.courses.filter(c=>!c.is_published).map(c=>c.id);
+                if (!ids.length) { showToast('No drafts to publish','warning'); return; }
+                const now = new Date().toISOString();
+                // Parallel batch — N small UPDATEs in flight at once.
+                const results = await Promise.all(ids.map(id =>
+                    db.from('courses').update({is_published:true, published_at:now}).eq('id',id)
+                        .then(r => ({ ok: !r.error, err: r.error }))
+                ));
+                const ok = results.filter(r=>r.ok).length;
+                const failed = results.length - ok;
+                showToast(ok+' courses published'+(failed?(', '+failed+' failed'):'')+'!', failed?'warning':'success');
+                await fetchCourses(); updateSidebarCounts(); renderAdminBulkActions();
+            } catch(e){ showToast('Error: '+e.message,'error'); }
+        });
+    }
+    async function bulkUnpublishAll() {
+        adminConfirm('Unpublish ALL live courses? They will become drafts.', async()=>{
+            try {
+                const ids = APP.courses.filter(c=>c.is_published).map(c=>c.id);
+                if (!ids.length) { showToast('No live courses','warning'); return; }
+                // Clear published_at too — keeps the schema consistent with toggleCoursePublish.
+                const results = await Promise.all(ids.map(id =>
+                    db.from('courses').update({is_published:false, published_at:null}).eq('id',id)
+                        .then(r => ({ ok: !r.error, err: r.error }))
+                ));
+                const ok = results.filter(r=>r.ok).length;
+                const failed = results.length - ok;
+                showToast(ok+' courses unpublished'+(failed?(', '+failed+' failed'):'')+'!', failed?'warning':'success');
+                await fetchCourses(); updateSidebarCounts(); renderAdminBulkActions();
+            } catch(e){ showToast('Error: '+e.message,'error'); }
+        });
+    }
+    async function bulkApplyDiscount() {
+        const pct = parseFloat(document.getElementById('bulkDiscountPercent').value);
+        if(!pct||pct<=0||pct>=100){showToast('Enter a valid discount % (1-99)','error');return;}
+        adminConfirm('Apply '+pct+'% discount to ALL courses?', async()=>{
+            try {
+                const results = await Promise.all(APP.courses.map(c => {
+                    const newPrice = Math.round(c.price*(1-pct/100));
+                    return db.from('courses').update({price:newPrice, original_price:c.price}).eq('id',c.id)
+                        .then(r => ({ ok: !r.error, err: r.error }));
+                }));
+                const ok = results.filter(r=>r.ok).length;
+                const failed = results.length - ok;
+                showToast('Discount applied to '+ok+' courses'+(failed?(', '+failed+' failed'):'')+'!', failed?'warning':'success');
+                await fetchCourses(); renderAdminBulkActions();
+            } catch(e){ showToast('Error: '+e.message,'error'); }
+        });
+    }
     async function saveAnnouncement() { const text=document.getElementById('announcementText').value.trim(); await saveSetting('announcement',text); showToast(text?'Announcement saved!':'Announcement cleared!'); }
 
     function renderAdminCourses() {
@@ -2895,29 +3142,100 @@
 
     async function submitPaymentForApproval(courseId, title, price) {
         document.getElementById('payConfirmModal').classList.remove('active');
+        // Lock the button to prevent double-click duplicates. We also re-check
+        // for an existing pending/completed order so multi-tab races don't
+        // create two pending rows for the same course.
+        if (window._submittingOrder) { showToast('Already submitting…','warning'); return; }
+        window._submittingOrder = true;
         try {
-            const orderData={user_id:APP.currentUser.id,course_id:courseId,amount:price,currency:'INR',status:'pending',payment_method:'upi',payment_verified:false};
-            console.log('Inserting order:',orderData);
+            if (!APP.currentUser) { openModal('login'); return; }
+            // Server-side dedupe check (cheap and authoritative — local APP.myOrders
+            // may be stale if the user opened a 2nd tab).
+            const { data: existing } = await db.from('orders')
+                .select('id,status')
+                .eq('user_id', APP.currentUser.id)
+                .eq('course_id', courseId)
+                .in('status', ['pending','completed','approved'])
+                .limit(1);
+            if (existing && existing.length) {
+                const s = existing[0].status;
+                showToast(s === 'pending'
+                    ? 'You already submitted this payment — waiting for admin approval.'
+                    : 'You already have access to this course.', 'warning');
+                await fetchMyOrders(); renderCourses(); renderPricingPlans();
+                return;
+            }
+
+            const orderData = {
+                user_id: APP.currentUser.id,
+                course_id: courseId,
+                amount: price,
+                currency: 'INR',
+                status: 'pending',
+                payment_method: 'upi',
+                payment_verified: false
+            };
             const {data,error}=await db.from('orders').insert(orderData).select();
-            console.log('Insert result:',{data,error});
-            if(error)throw error;
+            if(error) throw error;
             await fetchMyOrders(); renderCourses(); renderPricingPlans();
             showToast('Payment submitted! Admin will verify and grant access shortly.','success');
-        } catch(e){console.error('submitPayment error:',e);showToast('Error: '+(e.message||'Failed'),'error');}
+        } catch(e){
+            console.error('submitPayment error:',e);
+            showToast('Error: '+(e.message||'Failed'),'error');
+        } finally {
+            window._submittingOrder = false;
+        }
     }
 
     // Admin: Approve/Reject payment
     async function approveOrder(orderId, userId, courseId) {
         adminConfirm('Approve this payment and grant course access?', async()=>{
+            // STRATEGY: insert enrollment FIRST. If it fails (e.g. unique-constraint
+            // violation because the user is already enrolled), we don't mark the
+            // order as completed and the admin sees the real error. Only after a
+            // successful enrollment do we flip the order to 'completed'.
+            // If the order update fails after the enrollment succeeds, we roll
+            // back the enrollment so the system stays consistent.
+            let enrollmentId = null;
             try {
-                const{error:oe}=await db.from('orders').update({status:'completed',payment_verified:true,paid_at:new Date().toISOString()}).eq('id',orderId);
-                if(oe)throw oe;
-                // Create enrollment
-                const{error:ee}=await db.from('enrollments').insert({user_id:userId,course_id:courseId,order_id:orderId,status:'active',progress:0});
-                if(ee)throw ee;
+                const enrollPayload = {
+                    user_id: userId,
+                    course_id: courseId,
+                    order_id: orderId,
+                    status: 'active',
+                    progress: 0,
+                    enrolled_at: new Date().toISOString()
+                };
+                const { data: ed, error: ee } = await db.from('enrollments').insert(enrollPayload).select().single();
+                if (ee) {
+                    // Duplicate enrollment? Check if it already exists for this user+course.
+                    if (ee.code === '23505' || /duplicate|unique/i.test(ee.message||'')) {
+                        const { data: existing } = await db.from('enrollments')
+                            .select('id').eq('user_id', userId).eq('course_id', courseId).maybeSingle();
+                        if (existing) enrollmentId = existing.id;
+                        else throw ee;
+                    } else { throw ee; }
+                } else {
+                    enrollmentId = ed?.id || null;
+                }
+
+                const { error: oe } = await db.from('orders')
+                    .update({ status:'completed', payment_verified:true, paid_at:new Date().toISOString() })
+                    .eq('id', orderId);
+                if (oe) {
+                    // Rollback the newly-inserted enrollment to keep state consistent.
+                    if (enrollmentId) {
+                        try { await db.from('enrollments').delete().eq('id', enrollmentId); } catch(_){}
+                    }
+                    throw oe;
+                }
+
                 showToast('Payment approved! User can now access the course.','success');
                 await fetchOrders(); renderAdminOrders(); updateSidebarCounts();
-            }catch(e){showToast('Error: '+e.message,'error');}
+            } catch(e){
+                console.error('approveOrder failed:', e);
+                showToast('Error: '+(e.message||'Approval failed'),'error');
+            }
         });
     }
     async function rejectOrder(orderId) {
@@ -2958,8 +3276,25 @@
     window.addEventListener('scroll', () => { document.querySelector('.navbar').classList.toggle('scrolled', window.scrollY > 20); }, { passive: true });
 
     // ===== INIT =====
-    async function appInit() { try{await fetchSettings();await fetchCourses();await initAuth();renderPricingPlans();}catch(e){console.error(e);} }
-    async function fetchMyOrders() { if(!APP.currentUser){APP.myOrders=[];return;} try{const{data,error}=await db.from('orders').select('id,course_id,user_id,status').eq('user_id',APP.currentUser.id); if(!error)APP.myOrders=data||[];}catch(e){console.error('fetchMyOrders error:',e);APP.myOrders=[];} }
+    async function appInit() {
+        try {
+            // Settings and courses are independent reads → parallel for faster
+            // first paint. initAuth must run after we have at least started
+            // fetchSettings (which seeds DEFAULT_SETTINGS) so the UI renders
+            // sensibly even if the user is logged in.
+            await Promise.all([fetchSettings(), fetchCourses()]);
+            await initAuth();
+            renderPricingPlans();
+        } catch(e){ console.error('appInit error:', e); }
+    }
+    async function fetchMyOrders() {
+        if(!APP.currentUser){ APP.myOrders=[]; return; }
+        try {
+            const {data,error}=await db.from('orders').select('id,course_id,user_id,status').eq('user_id',APP.currentUser.id);
+            if(error){ console.warn('fetchMyOrders error:', error); APP.myOrders=[]; return; }
+            APP.myOrders = data || [];
+        } catch(e){ console.error('fetchMyOrders exception:',e); APP.myOrders=[]; }
+    }
 
     // ===== SECURE PDF VIEWER (DRM-LITE) =====
     const Viewer = { courseId:null, title:null, startedAt:0, timer:null, lastProgressBump:0 };
@@ -3107,10 +3442,10 @@
         document.getElementById('userMenu')?.classList.remove('active');
         document.getElementById('userAvatarBtn')?.setAttribute('aria-expanded', 'false');
         Overlay.open('dashboardOverlay', { initialFocusSelector: '.dash-header .btn, .dash-header button, button, [href], input, select, textarea' });
-        // Ensure data is fresh
-        await fetchMyEnrollments();
-        if(!APP.courses.length) await fetchCourses();
-        await fetchMyStudyStats();
+        // Ensure data is fresh — all reads are independent so run in parallel.
+        const tasks = [fetchMyEnrollments(), fetchMyStudyStats()];
+        if (!APP.courses.length) tasks.push(fetchCourses());
+        await Promise.all(tasks);
         renderDashboard();
     }
     function closeDashboard(){
@@ -3315,8 +3650,36 @@
     })();
 
     // ===== SERVICE WORKER (PWA) =====
+    // Registers the SW and prompts the user when a new version is waiting so
+    // they don't keep seeing stale cached assets after a deploy.
     if('serviceWorker' in navigator && location.protocol === 'https:') {
-        window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js').then(reg => {
+                // A new SW has been found — listen for its state changes.
+                function watch(installing) {
+                    if (!installing) return;
+                    installing.addEventListener('statechange', () => {
+                        if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                            // There's an existing controller AND a new SW is installed → update available.
+                            try {
+                                showToast('New version available — refreshing…','warning');
+                                installing.postMessage({ type: 'SKIP_WAITING' });
+                            } catch(_) {}
+                        }
+                    });
+                }
+                watch(reg.installing);
+                reg.addEventListener('updatefound', () => watch(reg.installing));
+                // Reload once the new SW takes control (handled by the SW's
+                // skipWaiting + clients.claim flow above).
+                let _reloaded = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (_reloaded) return;
+                    _reloaded = true;
+                    setTimeout(() => location.reload(), 400);
+                });
+            }).catch(()=>{});
+        });
     }
     let _deferredInstall = null;
     window.addEventListener('beforeinstallprompt', e => {
