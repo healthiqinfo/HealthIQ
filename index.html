@@ -186,7 +186,7 @@
         .hamburger { display: none; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--gray-800); transition: var(--transition); }
         .hamburger.active { transform: rotate(90deg); }
 
-        .hero { padding: 6rem 2rem 5rem; position: relative; overflow: hidden; background: linear-gradient(160deg, var(--primary-light) 0%, var(--white) 40%, #f0f7ff 100%); text-align: center; }
+        .hero { padding: 4.5rem 2rem 5rem; position: relative; overflow: hidden; background: linear-gradient(160deg, var(--primary-light) 0%, var(--white) 40%, #f0f7ff 100%); text-align: center; }
         /* Soft animated gradient mesh background — subtle, no rotation jank */
         .hero::before { content: ''; position: absolute; top: -40%; right: -15%; width: 700px; height: 700px; background: radial-gradient(circle, rgba(15,111,236,0.08) 0%, transparent 65%); border-radius: 50%; animation: heroFloat 8s ease-in-out infinite; z-index: 0; pointer-events: none; }
         .hero::after { content: ''; position: absolute; bottom: -20%; left: -10%; width: 500px; height: 500px; background: radial-gradient(circle, rgba(139,92,246,0.06) 0%, transparent 65%); border-radius: 50%; animation: heroFloat 10s ease-in-out infinite reverse; z-index: 0; pointer-events: none; }
@@ -194,7 +194,7 @@
         @media (prefers-reduced-motion: reduce) { .hero::before, .hero::after { animation: none; } }
 
         .hero-content { max-width: 820px; margin: 0 auto; position: relative; z-index: 1; }
-        .hero-badge { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-800); padding: 0.5rem 1.2rem; border-radius: 24px; font-size: 0.85rem; font-weight: 600; margin-bottom: 1.5rem; box-shadow: var(--shadow-sm), 0 0 20px rgba(15,111,236,0.05); animation: fadeInDown 0.6s ease, badgeGlow 3s ease-in-out infinite; }
+        .hero-badge { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--white); border: 1px solid var(--gray-200); color: var(--gray-800); padding: 0.5rem 1.2rem; border-radius: 24px; font-size: 0.85rem; font-weight: 600; margin-bottom: 1rem; box-shadow: var(--shadow-sm), 0 0 20px rgba(15,111,236,0.05); animation: fadeInDown 0.6s ease, badgeGlow 3s ease-in-out infinite; }
         @keyframes badgeGlow { 0%,100%{box-shadow: var(--shadow-sm), 0 0 20px rgba(15,111,236,0.05);} 50%{box-shadow: var(--shadow-sm), 0 0 20px rgba(15,111,236,0.12);} }
         .hero h1 { font-size: 3.5rem; font-weight: 800; color: var(--gray-900); margin-bottom: 1.2rem; line-height: 1.15; letter-spacing: -1.5px; animation: fadeInUp 0.7s ease; }
         .hero h1 .highlight { color: var(--primary); background: linear-gradient(135deg, var(--primary), #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -228,8 +228,8 @@
         }
         [data-vt="modal"] { view-transition-name: modal; }
 
-        @media (max-width: 768px) { .hero h1 { font-size: 2.2rem; } .hero-stats { gap: 1.5rem; flex-wrap: wrap; } }
-        @media (max-width: 600px) { .hero { padding: 4.5rem 1rem 3rem; } .hero h1 { font-size: 1.9rem; } }
+        @media (max-width: 768px) { .hero { padding: 3.5rem 2rem 4rem; } .hero h1 { font-size: 2.2rem; } .hero-stats { gap: 1.5rem; flex-wrap: wrap; } }
+        @media (max-width: 600px) { .hero { padding: 3rem 1rem 3rem; } .hero h1 { font-size: 1.9rem; } .hero-badge { margin-bottom: 0.75rem; font-size: 0.78rem; padding: 0.4rem 0.95rem; } }
         .reveal-item { opacity: 0; transform: translateY(30px); transition: all 0.6s cubic-bezier(0.4,0,0.2,1); }
         .reveal-item.revealed { opacity: 1; transform: translateY(0); }
         .reveal-item:nth-child(2) { transition-delay: 0.1s; }
@@ -2946,6 +2946,8 @@
                 activeIndex = 0;
                 return;
             }
+            // Clamp activeIndex to filtered range
+            if (activeIndex >= filtered.length) activeIndex = 0;
             // Group by section
             const groups = {};
             filtered.forEach(it => { (groups[it.section] = groups[it.section] || []).push(it); });
@@ -2963,11 +2965,21 @@
                 });
             });
             list.innerHTML = html;
-            list.querySelectorAll('.cmdk-item').forEach(el => {
-                el.addEventListener('mouseenter', () => { activeIndex = Number(el.dataset.idx); render(query); });
-                el.addEventListener('click', () => { selectAt(Number(el.dataset.idx)); });
-            });
             // Scroll active into view
+            const active = list.querySelector('.cmdk-item.is-active');
+            if (active) active.scrollIntoView({ block: 'nearest' });
+        }
+
+        // Update active item visually WITHOUT re-rendering the whole list
+        // (re-rendering on hover destroys the DOM node and kills the click event)
+        function setActive(newIdx) {
+            if (newIdx === activeIndex || newIdx < 0 || newIdx >= filtered.length) return;
+            activeIndex = newIdx;
+            const list = document.getElementById('cmdkList');
+            if (!list) return;
+            list.querySelectorAll('.cmdk-item').forEach(el => {
+                el.classList.toggle('is-active', Number(el.dataset.idx) === activeIndex);
+            });
             const active = list.querySelector('.cmdk-item.is-active');
             if (active) active.scrollIntoView({ block: 'nearest' });
         }
@@ -3009,14 +3021,38 @@
         document.addEventListener('DOMContentLoaded', () => {
             const ov = document.getElementById('cmdkOverlay');
             const inp = document.getElementById('cmdkInput');
-            if (!ov || !inp) return;
+            const list = document.getElementById('cmdkList');
+            if (!ov || !inp || !list) return;
             ov.addEventListener('click', e => { if (e.target === ov) close(); });
             inp.addEventListener('input', e => { activeIndex = 0; render(e.target.value); });
             inp.addEventListener('keydown', e => {
-                if (e.key === 'ArrowDown') { e.preventDefault(); activeIndex = Math.min(filtered.length - 1, activeIndex + 1); render(inp.value); }
-                else if (e.key === 'ArrowUp') { e.preventDefault(); activeIndex = Math.max(0, activeIndex - 1); render(inp.value); }
+                if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(filtered.length - 1, activeIndex + 1)); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(0, activeIndex - 1)); }
                 else if (e.key === 'Enter') { e.preventDefault(); selectAt(activeIndex); }
                 else if (e.key === 'Escape') { e.preventDefault(); close(); }
+            });
+            // Delegated pointerdown handles BOTH mouse click + mobile tap reliably.
+            // Using pointerdown (instead of click) avoids losing the target if a
+            // re-render happens between mousedown and click. preventDefault stops
+            // the input from losing focus to the clicked item.
+            list.addEventListener('pointerdown', e => {
+                const item = e.target.closest && e.target.closest('.cmdk-item');
+                if (!item) return;
+                e.preventDefault();
+                const idx = Number(item.dataset.idx);
+                if (Number.isFinite(idx)) selectAt(idx);
+            });
+            // Hover/move syncs the visual highlight without rebuilding the DOM
+            // (the old re-render-on-hover destroyed click targets mid-tap).
+            list.addEventListener('mousemove', e => {
+                const item = e.target.closest && e.target.closest('.cmdk-item');
+                if (!item) return;
+                const idx = Number(item.dataset.idx);
+                if (Number.isFinite(idx)) setActive(idx);
+            });
+            // Keep keyboard nav and pointer nav consistent
+            list.addEventListener('mouseleave', () => {
+                // Don't reset on leave — keep last hovered active so Enter still works.
             });
         });
 
@@ -3750,50 +3786,116 @@
     function loadMoreCourses() { courseDisplayCount+=6; renderCourses(); }
 
     // ===== PRICING PLANS =====
+    // Hard limit: 1 to 6 plans. Plans are stored as a single JSON array in
+    // site_settings['pricing_plans']. For backward compatibility we also fall
+    // back to the legacy slot keys 'plan_1', 'plan_2', 'plan_3'.
+    const MAX_PLANS = 6;
     const DEFAULT_PLANS = [
-        {title:'Single Subject',price:499,original_price:999,period:'/subject',features:['One subject complete notes','PDF access for 1 year','Mobile-friendly viewer','Email-based access'],is_popular:false,links:[{name:'Subject Notes',url:''}]},
-        {title:'All-Access Bundle',price:2499,original_price:4999,period:'/year',features:['All BHMS subjects included','Lifetime updates','Priority support','Clinical cases included','MD prep material'],is_popular:true,links:[{name:'Anatomy',url:''},{name:'Physiology',url:''},{name:'Materia Medica',url:''},{name:'Organon',url:''},{name:'Repertory',url:''}]},
-        {title:'MD Preparation',price:3999,original_price:6999,period:'/year',features:['All BHMS notes','MD entrance material','Previous year papers','Revision shortcuts','1-on-1 guidance'],is_popular:false,links:[{name:'MD Organon',url:''},{name:'MD Materia Medica',url:''},{name:'MD Repertory',url:''},{name:'Previous Papers',url:''}]}
+        {title:'Single Subject',price:499,original_price:999,period:'/subject',features:['One subject complete notes','PDF access for 1 year','Mobile-friendly viewer','Email-based access'],is_popular:false,is_published:true,links:[{name:'Subject Notes',url:''}]},
+        {title:'All-Access Bundle',price:2499,original_price:4999,period:'/year',features:['All BHMS subjects included','Lifetime updates','Priority support','Clinical cases included','MD prep material'],is_popular:true,is_published:true,links:[{name:'Anatomy',url:''},{name:'Physiology',url:''},{name:'Materia Medica',url:''},{name:'Organon',url:''},{name:'Repertory',url:''}]},
+        {title:'MD Preparation',price:3999,original_price:6999,period:'/year',features:['All BHMS notes','MD entrance material','Previous year papers','Revision shortcuts','1-on-1 guidance'],is_popular:false,is_published:true,links:[{name:'MD Organon',url:''},{name:'MD Materia Medica',url:''},{name:'MD Repertory',url:''},{name:'Previous Papers',url:''}]}
     ];
 
+    // Normalise any plan object so the rest of the code can rely on the shape.
+    function normalisePlan(p) {
+        if (!p || typeof p !== 'object') return null;
+        return {
+            title: String(p.title || '').trim(),
+            price: Number(p.price) || 0,
+            original_price: Number(p.original_price) || 0,
+            period: String(p.period || '').trim(),
+            is_popular: !!p.is_popular,
+            // Treat missing is_published as TRUE so legacy data stays visible.
+            is_published: p.is_published !== false,
+            features: Array.isArray(p.features) ? p.features.filter(f => f && String(f).trim()).map(f => String(f).trim()) : [],
+            links: Array.isArray(p.links) ? p.links.map(l => ({ name: String(l && l.name || '').trim(), url: String(l && l.url || '').trim() })) : []
+        };
+    }
+
+    // Returns the raw configured plan array (all plans, including drafts).
+    // Reads new format first, falls back to legacy slots, then defaults.
+    function getAllPlansRaw() {
+        try {
+            const blob = APP.settings && APP.settings['pricing_plans'];
+            if (blob) {
+                const arr = JSON.parse(blob);
+                if (Array.isArray(arr) && arr.length) {
+                    return arr.map(normalisePlan).filter(Boolean).slice(0, MAX_PLANS);
+                }
+            }
+        } catch (_) {}
+        // Legacy fallback — read up to 6 individual slots
+        const legacy = [];
+        for (let i = 0; i < MAX_PLANS; i++) {
+            try {
+                const v = APP.settings && APP.settings['plan_' + (i + 1)];
+                if (v) {
+                    const obj = normalisePlan(JSON.parse(v));
+                    if (obj && obj.title) legacy.push(obj);
+                }
+            } catch (_) {}
+        }
+        if (legacy.length) return legacy;
+        return DEFAULT_PLANS.map(normalisePlan).filter(Boolean);
+    }
+
+    // Public-facing: only published plans
+    function getPublishedPlans() {
+        return getAllPlansRaw().filter(p => p.is_published);
+    }
+
+    // Legacy shim — some old code calls getPlan(i). Now reads from the unified list.
     function getPlan(i) {
-        const key='plan_'+(i+1);
-        try { if(APP.settings[key]) return JSON.parse(APP.settings[key]); } catch(e){}
-        return DEFAULT_PLANS[i];
+        const all = getAllPlansRaw();
+        return all[i] || DEFAULT_PLANS[i] || null;
     }
 
     function renderPricingPlans() {
-        const grid=document.getElementById('pricingGrid'); if(!grid) return;
-        const plans=[getPlan(0),getPlan(1),getPlan(2)];
-        // Find matching courses for plans (by slug)
-        grid.innerHTML=plans.map((p,i)=>{
-            const slug='pricing-plan-'+(i+1);
-            const course=APP.courses.find(c=>c.slug===slug);
-            const courseId=course?course.id:null;
-            const enrolled=courseId&&APP.myEnrollments.find(e=>String(e.course_id)===String(courseId)&&e.status==='active');
-            const existingOrder=courseId&&APP.currentUser&&APP.myOrders?.find(o=>String(o.course_id)===String(courseId));
-            const pendingOrder=existingOrder&&existingOrder.status==='pending'?existingOrder:null;
-            const approvedOrder=existingOrder&&(existingOrder.status==='approved'||existingOrder.status==='completed')?existingOrder:null;
+        const grid = document.getElementById('pricingGrid'); if (!grid) return;
+        const plans = getPublishedPlans();
+        // Set responsive grid columns based on plan count (1, 2, 3+)
+        const n = plans.length;
+        grid.style.gridTemplateColumns = n === 1
+            ? 'minmax(280px, 420px)'
+            : n === 2
+                ? 'repeat(2, minmax(260px, 1fr))'
+                : 'repeat(auto-fit, minmax(260px, 1fr))';
+        grid.style.justifyContent = n <= 2 ? 'center' : '';
 
-            let btn='';
-            if(enrolled||approvedOrder) btn='<button class="btn btn-success" style="width:100%;justify-content:center;" onclick="openPlanNotes('+i+')">📄 Open Notes</button>';
-            else if(pendingOrder) btn='<button class="btn btn-ghost" style="width:100%;justify-content:center;" disabled>⏳ Awaiting Approval</button>';
-            else if(courseId&&APP.currentUser) btn='<button class="btn '+(p.is_popular?'btn-primary':'btn-outline')+'" style="width:100%;justify-content:center;" onclick="buyPlan('+i+',\''+courseId+'\')">💳 Buy Now</button>';
-            else if(courseId) btn='<button class="btn '+(p.is_popular?'btn-primary':'btn-outline')+'" style="width:100%;justify-content:center;" onclick="openModal(\'login\')">Login to Buy</button>';
-            else if(APP.currentUser) btn='<button class="btn btn-ghost" style="width:100%;justify-content:center;" disabled>🔜 Coming Soon</button>';
-            else btn='<button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="openModal(\'login\')">Login to Buy</button>';
+        if (!n) {
+            grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;text-align:center;padding:2.5rem 1rem;color:var(--gray-600);">No pricing plans available right now. Please check back soon!</div>';
+            grid.setAttribute('aria-busy', 'false');
+            return;
+        }
 
-            return '<div class="pricing-card tilt-card'+(p.is_popular?' popular':'')+'">'+
-                (enrolled||approvedOrder?'<div style="position:absolute;top:12px;right:12px;background:var(--success);color:#fff;padding:0.2rem 0.6rem;border-radius:6px;font-size:0.7rem;font-weight:700;">✓ ENROLLED</div>':'')+
-                '<span class="pricing-badge">⭐ Most Popular</span>'+
-                '<h3>'+Utils.escapeHtml(p.title)+'</h3>'+
-                '<div class="pricing-price-block">'+
-                    '<div class="pricing-amount">'+Utils.formatCurrency(p.price)+'</div>'+
-                    '<div class="pricing-period">'+(p.period?Utils.escapeHtml(p.period):'&nbsp;')+'</div>'+
-                    '<div class="pricing-original">'+(p.original_price?Utils.formatCurrency(p.original_price):'&nbsp;')+'</div>'+
-                '</div>'+
-                '<ul class="pricing-features">'+p.features.map(f=>'<li>'+Utils.escapeHtml(f)+'</li>').join('')+'</ul>'+
-                btn+'</div>';
+        grid.innerHTML = plans.map((p, i) => {
+            const slug = 'pricing-plan-' + (i + 1);
+            const course = APP.courses.find(c => c.slug === slug);
+            const courseId = course ? course.id : null;
+            const enrolled = courseId && APP.myEnrollments.find(e => String(e.course_id) === String(courseId) && e.status === 'active');
+            const existingOrder = courseId && APP.currentUser && APP.myOrders?.find(o => String(o.course_id) === String(courseId));
+            const pendingOrder = existingOrder && existingOrder.status === 'pending' ? existingOrder : null;
+            const approvedOrder = existingOrder && (existingOrder.status === 'approved' || existingOrder.status === 'completed') ? existingOrder : null;
+
+            let btn = '';
+            if (enrolled || approvedOrder) btn = '<button class="btn btn-success" style="width:100%;justify-content:center;" onclick="openPlanNotes(' + i + ')">📄 Open Notes</button>';
+            else if (pendingOrder) btn = '<button class="btn btn-ghost" style="width:100%;justify-content:center;" disabled>⏳ Awaiting Approval</button>';
+            else if (courseId && APP.currentUser) btn = '<button class="btn ' + (p.is_popular ? 'btn-primary' : 'btn-outline') + '" style="width:100%;justify-content:center;" onclick="buyPlan(' + i + ',\'' + courseId + '\')">💳 Buy Now</button>';
+            else if (courseId) btn = '<button class="btn ' + (p.is_popular ? 'btn-primary' : 'btn-outline') + '" style="width:100%;justify-content:center;" onclick="openModal(\'login\')">Login to Buy</button>';
+            else if (APP.currentUser) btn = '<button class="btn btn-ghost" style="width:100%;justify-content:center;" disabled>🔜 Coming Soon</button>';
+            else btn = '<button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="openModal(\'login\')">Login to Buy</button>';
+
+            return '<div class="pricing-card tilt-card' + (p.is_popular ? ' popular' : '') + '">' +
+                (enrolled || approvedOrder ? '<div style="position:absolute;top:12px;right:12px;background:var(--success);color:#fff;padding:0.2rem 0.6rem;border-radius:6px;font-size:0.7rem;font-weight:700;">✓ ENROLLED</div>' : '') +
+                (p.is_popular ? '<span class="pricing-badge">⭐ Most Popular</span>' : '') +
+                '<h3>' + Utils.escapeHtml(p.title) + '</h3>' +
+                '<div class="pricing-price-block">' +
+                    '<div class="pricing-amount">' + Utils.formatCurrency(p.price) + '</div>' +
+                    '<div class="pricing-period">' + (p.period ? Utils.escapeHtml(p.period) : '&nbsp;') + '</div>' +
+                    '<div class="pricing-original">' + (p.original_price ? Utils.formatCurrency(p.original_price) : '&nbsp;') + '</div>' +
+                '</div>' +
+                '<ul class="pricing-features">' + p.features.map(f => '<li>' + Utils.escapeHtml(f) + '</li>').join('') + '</ul>' +
+                btn + '</div>';
         }).join('');
         grid.setAttribute('aria-busy', 'false');
         grid.classList.add('reveal-stagger');
@@ -3803,21 +3905,23 @@
     }
 
     function buyPlan(planIdx, courseId) {
-        if(!APP.currentUser){openModal('login');showToast('Please login first','warning');return;}
-        const plan=getPlan(planIdx);
+        if (!APP.currentUser) { openModal('login'); showToast('Please login first', 'warning'); return; }
+        const plan = getPublishedPlans()[planIdx];
+        if (!plan) { showToast('This plan is no longer available', 'error'); return; }
         enrollCourse(courseId, plan.title, plan.price);
     }
 
     function openPlanNotes(planIdx) {
-        const plan=getPlan(planIdx);
-        const links=plan.links||[];
-        const validLinks=links.filter(l=>l.url&&l.url.trim());
-        if(!validLinks.length){showToast('Notes links not configured yet. Contact admin.','warning');return;}
-        let m=document.getElementById('planNotesModal'); if(!m){m=document.createElement('div');m.id='planNotesModal';m.className='modal-overlay';document.body.appendChild(m);}
-        const slug='pricing-plan-'+(planIdx+1);
-        const course=APP.courses.find(c=>c.slug===slug);
-        const cid=course?course.id:'plan-'+planIdx;
-        m.innerHTML='<div class="modal" style="max-width:450px;text-align:center;"><button class="modal-close" onclick="document.getElementById(\'planNotesModal\').classList.remove(\'active\')">&times;</button><h2>📚 '+Utils.escapeHtml(plan.title)+'</h2><p class="modal-subtitle">Click on a subject to open in the secure viewer</p><div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:1.5rem;">'+validLinks.map(l=>'<button class="btn btn-primary" style="justify-content:center;" onclick="document.getElementById(\'planNotesModal\').classList.remove(\'active\');openSecureViewer(\''+cid+'\',\''+Utils.escapeHtml(l.url).replace(/\x27/g,"\\\x27")+'\',\''+Utils.escapeHtml(l.name).replace(/\x27/g,"\\\x27")+'\')">&#x1F512; '+Utils.escapeHtml(l.name)+'</button>').join('')+'</div></div>';
+        const plan = getPublishedPlans()[planIdx];
+        if (!plan) { showToast('Plan not found', 'error'); return; }
+        const links = plan.links || [];
+        const validLinks = links.filter(l => l.url && l.url.trim());
+        if (!validLinks.length) { showToast('Notes links not configured yet. Contact admin.', 'warning'); return; }
+        let m = document.getElementById('planNotesModal'); if (!m) { m = document.createElement('div'); m.id = 'planNotesModal'; m.className = 'modal-overlay'; document.body.appendChild(m); }
+        const slug = 'pricing-plan-' + (planIdx + 1);
+        const course = APP.courses.find(c => c.slug === slug);
+        const cid = course ? course.id : 'plan-' + planIdx;
+        m.innerHTML = '<div class="modal" style="max-width:450px;text-align:center;"><button class="modal-close" onclick="document.getElementById(\'planNotesModal\').classList.remove(\'active\')">&times;</button><h2>📚 ' + Utils.escapeHtml(plan.title) + '</h2><p class="modal-subtitle">Click on a subject to open in the secure viewer</p><div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:1.5rem;">' + validLinks.map(l => '<button class="btn btn-primary" style="justify-content:center;" onclick="document.getElementById(\'planNotesModal\').classList.remove(\'active\');openSecureViewer(\'' + cid + '\',\'' + Utils.escapeHtml(l.url).replace(/\x27/g, "\\\x27") + '\',\'' + Utils.escapeHtml(l.name).replace(/\x27/g, "\\\x27") + '\')">&#x1F512; ' + Utils.escapeHtml(l.name) + '</button>').join('') + '</div></div>';
         m.classList.add('active');
     }
 
@@ -4558,64 +4662,241 @@
     function filterAdminEnrollments(q) { q=q.toLowerCase(); const filtered=APP.enrollments.filter(e=>((e.profiles?.full_name||'')+' '+(e.courses?.title||'')).toLowerCase().includes(q)); document.getElementById('adminEnrollBody').innerHTML=filtered.map(e=>'<tr><td>'+Utils.escapeHtml(e.profiles?.full_name||'')+'</td><td><strong>'+Utils.escapeHtml(e.courses?.title||'')+'</strong></td><td>'+Utils.escapeHtml(e.courses?.category||'')+'</td><td>'+Utils.formatCurrency(e.courses?.price||0)+'</td><td><span class="status-badge status-active">'+Utils.escapeHtml(e.status||'active')+'</span></td><td>'+Utils.formatDate(e.enrolled_at)+'</td></tr>').join(''); }
 
     // ===== ADMIN PRICING PLANS =====
+    // Working copy of plans the admin is editing. We commit to site_settings
+    // only when they click "Save Plan" / "Publish" / "Save as Draft" so partial
+    // edits never affect the live site.
+    let _adminPlansDraft = null;
+
+    function ensureAdminPlansDraft(force) {
+        if (force || !Array.isArray(_adminPlansDraft)) {
+            _adminPlansDraft = getAllPlansRaw().map(p => Object.assign({}, p, { features: (p.features||[]).slice(), links: (p.links||[]).map(l => Object.assign({}, l)) }));
+        }
+        return _adminPlansDraft;
+    }
+
     function renderAdminPricing() {
-        const plans=[getPlan(0),getPlan(1),getPlan(2)];
-        document.getElementById('adminContent').innerHTML=`
-        <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.4rem;font-weight:800;">💰 Pricing Plans</h2><p style="font-size:0.85rem;color:var(--gray-600);">Configure the 3 pricing plans shown on the website. Each plan can have up to 8 PDF links.</p></div>
-        ${plans.map((p,i)=>`
-        <div class="settings-card">
-            <div class="settings-card-header"><span class="settings-icon">${i===1?'⭐':'📦'}</span><div><h3>Plan ${i+1}: ${Utils.escapeHtml(p.title)}</h3><p>${p.is_popular?'Popular/Featured Plan':'Standard Plan'}</p></div></div>
-            <div class="settings-card-body">
-                <div class="settings-grid-2">
-                    <div class="settings-field"><label>Plan Title *</label><input type="text" id="pp_${i}_title" value="${Utils.escapeHtml(p.title||'')}"></div>
-                    <div class="settings-field"><label>Period Label</label><input type="text" id="pp_${i}_period" value="${Utils.escapeHtml(p.period||'')}" placeholder="/year or /subject"></div>
-                    <div class="settings-field"><label>Price (₹) *</label><input type="number" id="pp_${i}_price" value="${p.price||0}"></div>
-                    <div class="settings-field"><label>Original Price (₹)</label><input type="number" id="pp_${i}_original_price" value="${p.original_price||0}"></div>
-                </div>
-                <div class="settings-field"><label>Popular Plan?</label><select id="pp_${i}_popular"><option value="false" ${!p.is_popular?'selected':''}>No</option><option value="true" ${p.is_popular?'selected':''}>Yes (Highlighted)</option></select></div>
-                <div class="settings-field"><label>Features (one per line)</label><textarea id="pp_${i}_features" rows="5" placeholder="Feature 1&#10;Feature 2&#10;...">${(p.features||[]).join('\\n')}</textarea></div>
-                <div style="margin-top:0.75rem;"><label style="font-size:0.8rem;font-weight:600;color:var(--gray-600);display:block;margin-bottom:0.5rem;">📄 PDF Links (Name → URL) — up to 8</label>
-                ${Array.from({length:8},(_, li)=>{const link=(p.links||[])[li]||{name:'',url:''}; return `<div class="settings-grid-2" style="margin-bottom:0.5rem;"><div class="settings-field"><input type="text" id="pp_${i}_link_${li}_name" value="${Utils.escapeHtml(link.name||'')}" placeholder="Button Name (e.g. Anatomy)"></div><div class="settings-field"><input type="url" id="pp_${i}_link_${li}_url" value="${Utils.escapeHtml(link.url||'')}" placeholder="https://drive.google.com/..."></div></div>`;}).join('')}
+        const plans = ensureAdminPlansDraft();
+        const publishedCount = plans.filter(p => p.is_published).length;
+        const draftCount = plans.length - publishedCount;
+        document.getElementById('adminContent').innerHTML = `
+        <div style="margin-bottom:1.5rem;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;">
+            <div>
+                <h2 style="font-size:1.4rem;font-weight:800;">💰 Pricing Plans</h2>
+                <p style="font-size:0.85rem;color:var(--gray-600);">Configure 1–${MAX_PLANS} pricing plans. Drafts are hidden from the public site. Each plan supports up to 8 PDF links.</p>
+                <div style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;font-size:0.75rem;color:var(--gray-600);">
+                    <span class="trend-pill up">✓ ${publishedCount} live</span>
+                    <span class="trend-pill flat">📝 ${draftCount} draft</span>
+                    <span class="trend-pill flat">${plans.length} / ${MAX_PLANS} total</span>
                 </div>
             </div>
-            <div class="settings-card-footer"><button class="btn btn-primary btn-sm" onclick="savePricingPlan(${i})">💾 Save Plan ${i+1}</button></div>
-        </div>`).join('')}
-        <div style="margin-top:1rem;padding:1rem;background:var(--primary-light);border-radius:var(--radius);font-size:0.85rem;color:var(--gray-600);">
-            <strong>💡 How it works:</strong> When you save a plan, a hidden course is auto-created. Students buy via UPI → you approve → they see "Open Notes" with all PDF links listed as buttons.
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+                <button class="btn btn-ghost btn-sm" onclick="discardPricingDraft()" title="Discard unsaved changes">↺ Reset</button>
+                <button class="btn btn-primary btn-sm" onclick="addPricingPlan()" ${plans.length >= MAX_PLANS ? 'disabled' : ''}>+ Add Plan</button>
+            </div>
+        </div>
+        ${plans.map((p, i) => `
+        <div class="settings-card" data-plan-idx="${i}" style="${p.is_published ? '' : 'border-left:4px solid var(--warning);'}">
+            <div class="settings-card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.75rem;">
+                <div style="display:flex;align-items:center;gap:0.75rem;flex:1;min-width:0;">
+                    <span class="settings-icon">${p.is_popular ? '⭐' : '📦'}</span>
+                    <div style="min-width:0;">
+                        <h3 style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">Plan ${i + 1}: ${Utils.escapeHtml(p.title || '(untitled)')}
+                            <span class="status-badge ${p.is_published ? 'status-active' : 'status-draft'}" style="font-size:0.65rem;">${p.is_published ? '✓ PUBLISHED' : '📝 DRAFT'}</span>
+                        </h3>
+                        <p>${p.is_popular ? 'Highlighted as "Most Popular"' : 'Standard plan'}</p>
+                    </div>
+                </div>
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+                    <button class="btn btn-ghost btn-sm" title="Move up" ${i === 0 ? 'disabled' : ''} onclick="movePricingPlan(${i}, -1)">↑</button>
+                    <button class="btn btn-ghost btn-sm" title="Move down" ${i === plans.length - 1 ? 'disabled' : ''} onclick="movePricingPlan(${i}, 1)">↓</button>
+                    <button class="btn btn-danger btn-sm" title="Delete plan" onclick="deletePricingPlan(${i})">🗑</button>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-grid-2">
+                    <div class="settings-field"><label>Plan Title *</label><input type="text" id="pp_${i}_title" value="${Utils.escapeHtml(p.title || '')}" placeholder="e.g. All-Access Bundle"></div>
+                    <div class="settings-field"><label>Period Label</label><input type="text" id="pp_${i}_period" value="${Utils.escapeHtml(p.period || '')}" placeholder="/year or /subject"></div>
+                    <div class="settings-field"><label>Price (₹) *</label><input type="number" id="pp_${i}_price" value="${p.price || 0}" min="0"></div>
+                    <div class="settings-field"><label>Original Price (₹)</label><input type="number" id="pp_${i}_original_price" value="${p.original_price || 0}" min="0"></div>
+                </div>
+                <div class="settings-grid-2">
+                    <div class="settings-field"><label>Highlight as Popular?</label><select id="pp_${i}_popular"><option value="false" ${!p.is_popular ? 'selected' : ''}>No</option><option value="true" ${p.is_popular ? 'selected' : ''}>Yes (shows "Most Popular" badge)</option></select></div>
+                    <div class="settings-field"><label>Publish Status</label><select id="pp_${i}_published"><option value="true" ${p.is_published ? 'selected' : ''}>✓ Published (visible on site)</option><option value="false" ${!p.is_published ? 'selected' : ''}>📝 Draft (hidden from site)</option></select></div>
+                </div>
+                <div class="settings-field"><label>Features (one per line)</label><textarea id="pp_${i}_features" rows="5" placeholder="Feature 1&#10;Feature 2&#10;...">${Utils.escapeHtml((p.features || []).join('\n'))}</textarea></div>
+                <div style="margin-top:0.75rem;"><label style="font-size:0.8rem;font-weight:600;color:var(--gray-600);display:block;margin-bottom:0.5rem;">📄 PDF Links (Name → URL) — up to 8</label>
+                ${Array.from({ length: 8 }, (_, li) => { const link = (p.links || [])[li] || { name: '', url: '' }; return `<div class="settings-grid-2" style="margin-bottom:0.5rem;"><div class="settings-field"><input type="text" id="pp_${i}_link_${li}_name" value="${Utils.escapeHtml(link.name || '')}" placeholder="Button Name (e.g. Anatomy)"></div><div class="settings-field"><input type="url" id="pp_${i}_link_${li}_url" value="${Utils.escapeHtml(link.url || '')}" placeholder="https://drive.google.com/..."></div></div>`; }).join('')}
+                </div>
+            </div>
+            <div class="settings-card-footer" style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <button class="btn btn-ghost btn-sm" onclick="savePricingPlan(${i}, 'draft')">📝 Save as Draft</button>
+                <button class="btn btn-primary btn-sm" onclick="savePricingPlan(${i}, 'publish')">&#x1F680; Save &amp; Publish</button>
+                <button class="btn btn-outline btn-sm" onclick="togglePlanPublish(${i})">${p.is_published ? '👁‍🗨 Unpublish' : '✅ Publish'}</button>
+            </div>
+        </div>`).join('') || '<div class="empty-state" style="padding:2rem;text-align:center;color:var(--gray-600);">No pricing plans yet. Click <strong>+ Add Plan</strong> to create one.</div>'}
+        <div style="margin-top:1rem;padding:1rem;background:var(--primary-light);border-radius:var(--radius);font-size:0.85rem;color:var(--gray-600);line-height:1.5;">
+            <strong>💡 How it works:</strong><br>
+            • <strong>Save as Draft</strong> stores the plan but keeps it hidden from the public site.<br>
+            • <strong>Save &amp; Publish</strong> saves and makes the plan visible immediately.<br>
+            • A hidden course (slug <code>pricing-plan-N</code>) is auto-created so students can buy via UPI → admin approves → they see "Open Notes".<br>
+            • Use the up/down arrows to reorder plans on the public site.
         </div>`;
     }
 
-    async function savePricingPlan(i) {
-        const title=document.getElementById('pp_'+i+'_title').value.trim();
-        const price=parseFloat(document.getElementById('pp_'+i+'_price').value)||0;
-        const original_price=parseFloat(document.getElementById('pp_'+i+'_original_price').value)||0;
-        const period=document.getElementById('pp_'+i+'_period').value.trim();
-        const is_popular=document.getElementById('pp_'+i+'_popular').value==='true';
-        const features=document.getElementById('pp_'+i+'_features').value.split('\n').map(f=>f.trim()).filter(f=>f);
-        const links=[];
-        for(let li=0;li<8;li++){
-            const name=document.getElementById('pp_'+i+'_link_'+li+'_name').value.trim();
-            const url=document.getElementById('pp_'+i+'_link_'+li+'_url').value.trim();
-            if(name||url) links.push({name,url});
+    // Read all form inputs for a single plan back into the working draft.
+    function readPlanFormInto(i) {
+        const plans = ensureAdminPlansDraft();
+        if (!plans[i]) return null;
+        const get = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+        const title = get('pp_' + i + '_title').trim();
+        const price = parseFloat(get('pp_' + i + '_price')) || 0;
+        const original_price = parseFloat(get('pp_' + i + '_original_price')) || 0;
+        const period = get('pp_' + i + '_period').trim();
+        const is_popular = get('pp_' + i + '_popular') === 'true';
+        const is_published = get('pp_' + i + '_published') === 'true';
+        const features = get('pp_' + i + '_features').split('\n').map(f => f.trim()).filter(Boolean);
+        const links = [];
+        for (let li = 0; li < 8; li++) {
+            const name = get('pp_' + i + '_link_' + li + '_name').trim();
+            const url = get('pp_' + i + '_link_' + li + '_url').trim();
+            if (name || url) links.push({ name, url });
         }
-        if(!title||!price){showToast('Title and Price are required','error');return;}
-        if(original_price&&original_price<price){showToast('Original Price must be ≥ Price','error');return;}
+        const next = normalisePlan({ title, price, original_price, period, is_popular, is_published, features, links });
+        plans[i] = next;
+        return next;
+    }
 
-        const plan={title,price,original_price,period,is_popular,features,links};
-        // Save plan config to site_settings
-        await saveSetting('plan_'+(i+1), JSON.stringify(plan));
+    // Read every plan's form into the draft array (used before save / reorder / delete)
+    function readAllPlanForms() {
+        const plans = ensureAdminPlansDraft();
+        for (let i = 0; i < plans.length; i++) {
+            if (document.getElementById('pp_' + i + '_title')) readPlanFormInto(i);
+        }
+    }
 
-        // Auto-create/update hidden course for this plan
-        const slug='pricing-plan-'+(i+1);
-        const courseData={title:title,slug:slug,short_description:'Pricing plan: '+title,description:title,price:price,original_price:original_price||price,category:'general',difficulty:'beginner',is_published:false,is_featured:false,thumbnail_url:'https://placehold.co/400x300',pdf_url:links[0]?.url||'https://placehold.co/1'};
-        const existing=APP.courses.find(c=>c.slug===slug);
-        if(existing) courseData.id=existing.id;
-        const r=await saveCourseToDb(courseData);
-        if(!r.success){showToast('Error creating plan course: '+(r.error?.message||''),'error');return;}
+    // Persist the entire plans array. Also persists each plan to a legacy
+    // slot key so older deployments stay backward-compatible.
+    async function commitPlansToServer(opts = {}) {
+        const plans = ensureAdminPlansDraft();
+        const cleaned = plans.map(normalisePlan).filter(Boolean);
+        try {
+            await saveSetting('pricing_plans', JSON.stringify(cleaned));
+            // Backward-compat: mirror first MAX_PLANS into plan_1/2/3/...
+            // Empty out unused legacy slots so removed plans don't reappear.
+            const tasks = [];
+            for (let i = 0; i < MAX_PLANS; i++) {
+                const v = cleaned[i] ? JSON.stringify(cleaned[i]) : '';
+                if (APP.settings['plan_' + (i + 1)] !== v) tasks.push(saveSetting('plan_' + (i + 1), v));
+            }
+            if (tasks.length) await Promise.all(tasks);
+            return { ok: true };
+        } catch (e) {
+            console.error('commitPlansToServer failed:', e);
+            return { ok: false, error: e };
+        }
+    }
 
-        showToast('Plan '+(i+1)+' saved!');
+    async function savePricingPlan(i, mode) {
+        const plans = ensureAdminPlansDraft();
+        // Always read the latest form values for THIS plan first
+        readPlanFormInto(i);
+        const plan = plans[i];
+        if (!plan) { showToast('Plan not found', 'error'); return; }
+        if (!plan.title) { showToast('Title is required', 'error'); return; }
+        if (!plan.price) { showToast('Price is required', 'error'); return; }
+        if (plan.original_price && plan.original_price < plan.price) { showToast('Original Price must be ≥ Price', 'error'); return; }
+
+        // Apply mode (draft / publish) to this single plan
+        if (mode === 'draft') plan.is_published = false;
+        else if (mode === 'publish') plan.is_published = true;
+
+        // Also persist other plan forms that the admin may have edited, so we
+        // never silently revert their unsaved typing in another card.
+        readAllPlanForms();
+
+        const r = await commitPlansToServer();
+        if (!r.ok) { showToast('Save failed: ' + (r.error?.message || 'unknown'), 'error'); return; }
+
+        // Auto-create/update the hidden course for this plan (so students can buy)
+        const slug = 'pricing-plan-' + (i + 1);
+        const courseData = {
+            title: plan.title, slug, short_description: 'Pricing plan: ' + plan.title, description: plan.title,
+            price: plan.price, original_price: plan.original_price || plan.price,
+            category: 'general', difficulty: 'beginner',
+            is_published: false, is_featured: false,
+            thumbnail_url: 'https://placehold.co/400x300',
+            pdf_url: plan.links[0]?.url || 'https://placehold.co/1'
+        };
+        const existing = APP.courses.find(c => c.slug === slug);
+        if (existing) courseData.id = existing.id;
+        const cr = await saveCourseToDb(courseData);
+        if (!cr.success) { showToast('Plan saved but course sync failed: ' + (cr.error?.message || ''), 'warning'); }
+
+        showToast('Plan ' + (i + 1) + ' ' + (mode === 'draft' ? 'saved as draft' : 'saved & published') + '!', 'success');
         await fetchCourses();
+        renderAdminPricing();
         renderPricingPlans();
+    }
+
+    async function togglePlanPublish(i) {
+        readAllPlanForms();
+        const plans = ensureAdminPlansDraft();
+        if (!plans[i]) return;
+        plans[i].is_published = !plans[i].is_published;
+        const r = await commitPlansToServer();
+        if (!r.ok) { showToast('Update failed', 'error'); return; }
+        showToast('Plan ' + (i + 1) + ' is now ' + (plans[i].is_published ? 'published' : 'a draft'), 'success');
+        renderAdminPricing();
+        renderPricingPlans();
+    }
+
+    function addPricingPlan() {
+        readAllPlanForms();
+        const plans = ensureAdminPlansDraft();
+        if (plans.length >= MAX_PLANS) { showToast('Maximum ' + MAX_PLANS + ' plans reached', 'warning'); return; }
+        plans.push(normalisePlan({
+            title: 'New Plan ' + (plans.length + 1),
+            price: 499, original_price: 0, period: '/year',
+            is_popular: false, is_published: false,
+            features: ['Feature 1', 'Feature 2', 'Feature 3'],
+            links: []
+        }));
+        renderAdminPricing();
+        showToast('Draft plan added — fill it in and click Publish when ready', 'info');
+    }
+
+    function deletePricingPlan(i) {
+        adminConfirm('Delete this plan? This cannot be undone. Existing student enrollments stay safe (the underlying course is not deleted).', async () => {
+            readAllPlanForms();
+            const plans = ensureAdminPlansDraft();
+            plans.splice(i, 1);
+            const r = await commitPlansToServer();
+            if (!r.ok) { showToast('Delete failed', 'error'); return; }
+            showToast('Plan deleted', 'success');
+            renderAdminPricing();
+            renderPricingPlans();
+        });
+    }
+
+    function movePricingPlan(i, dir) {
+        readAllPlanForms();
+        const plans = ensureAdminPlansDraft();
+        const j = i + dir;
+        if (j < 0 || j >= plans.length) return;
+        const tmp = plans[i]; plans[i] = plans[j]; plans[j] = tmp;
+        commitPlansToServer().then(r => {
+            if (!r.ok) { showToast('Reorder failed', 'error'); return; }
+            renderAdminPricing();
+            renderPricingPlans();
+        });
+    }
+
+    function discardPricingDraft() {
+        adminConfirm('Discard all unsaved changes and reload from server?', () => {
+            ensureAdminPlansDraft(true);
+            renderAdminPricing();
+            showToast('Reset to last saved state', 'info');
+        });
     }
 
     // ===== ADMIN TESTIMONIALS & FAQ =====

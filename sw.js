@@ -1,7 +1,8 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.3.0 — Ultimate Elite pack v3: glass navbar, magnetic, 3D tilt, ripple,
-   FAB menu, OLED mode, notif center, auto-refresh. Cache bumped to force refresh. */
-const VERSION = 'hiq-v1.3.0';
+   v1.4.0 — Bug-bash: clickable command palette (pointerdown), tighter hero
+   header gap, dynamic pricing plans (1–6) with draft / publish persistence
+   and admin add / remove / reorder. Cache bumped to force refresh. */
+const VERSION = 'hiq-v1.4.0';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
