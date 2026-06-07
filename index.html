@@ -2991,6 +2991,113 @@
         .mobile-nav, .mobile-nav-backdrop { display: none !important; }
 
         /* ==================================================================
+           ===== USER-MENU MOBILE DRAWER v1.6.8 =====
+           Bug: on phones (<=768px) the absolute-positioned dropdown
+           (right:0 of #userMenuWrapper, min-width:300px) was clipped
+           because the wrapper sits at the right edge of .nav-container
+           and the dropdown extended past the viewport / scrollbar.
+           Fix: on mobile, promote the dropdown into a fixed-position
+           right-side drawer pinned to viewport edges, with a tap-to-
+           dismiss backdrop and body-scroll lock. Desktop UI unchanged.
+           Acceptance: full drawer visible on iPhone SE / 13/14/15 +
+           Android 360-430px viewports, no horizontal page scroll while
+           open, smooth slide-in from the right.
+           ================================================================== */
+
+        /* Backdrop (only painted on mobile via the media query below) */
+        .user-menu-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            -webkit-backdrop-filter: blur(2px);
+            backdrop-filter: blur(2px);
+            z-index: 999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.22s ease;
+            display: none;
+        }
+        [data-theme="dark"] .user-menu-backdrop { background: rgba(0, 0, 0, 0.58); }
+        .user-menu-backdrop.active { opacity: 1; pointer-events: auto; }
+
+        @media (max-width: 768px) {
+            /* Promote dropdown -> full-height fixed right drawer.
+               Scoped to #userMenuWrapper so we beat the v6 polish rules
+               at line ~3000 without resorting to a tag-soup of !important. */
+            #userMenuWrapper .user-menu {
+                position: fixed !important;
+                top: 0 !important;
+                right: 0 !important;
+                bottom: 0 !important;
+                left: auto !important;
+                height: 100vh !important;
+                height: 100dvh !important;          /* honors iOS dynamic viewport */
+                width: min(90vw, 320px) !important;
+                min-width: 260px !important;
+                max-width: 320px !important;
+                margin: 0 !important;
+                border-radius: 18px 0 0 18px !important;
+                border-right: none !important;
+                box-shadow:
+                    -18px 0 40px -8px rgba(15, 23, 42, 0.32),
+                    -6px 0 14px -4px rgba(15, 23, 42, 0.18) !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+                -webkit-overflow-scrolling: touch;
+                z-index: 1001 !important;           /* above backdrop (999) */
+                transform: translateX(100%);        /* offscreen by default */
+                transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+                animation: none !important;         /* override v6 scale-in keyframes */
+                padding-top: max(0px, env(safe-area-inset-top));
+                padding-bottom: max(0px, env(safe-area-inset-bottom));
+            }
+            #userMenuWrapper .user-menu.active {
+                display: block !important;
+                transform: translateX(0);           /* slide in */
+                animation: none !important;
+            }
+            /* Hide the dropdown's tooltip arrow — it's a drawer now, no arrow needed */
+            #userMenuWrapper .user-menu::before,
+            #userMenuWrapper .user-menu::after { display: none !important; }
+
+            /* Bigger, finger-friendly tap targets inside the drawer */
+            #userMenuWrapper .user-menu-item {
+                padding: 0.95rem 1rem !important;
+                font-size: 0.95rem !important;
+                border-radius: 12px !important;
+            }
+            #userMenuWrapper .user-menu-item .umi-icon {
+                width: 36px !important;
+                height: 36px !important;
+                font-size: 1.05rem !important;
+            }
+            #userMenuWrapper .user-menu-header {
+                padding: 1.4rem 1.25rem 1.2rem !important;
+            }
+            #userMenuWrapper .user-menu-avatar {
+                width: 52px !important;
+                height: 52px !important;
+                font-size: 1.2rem !important;
+            }
+            #userMenuWrapper .user-menu-section { padding: 0.6rem 0.6rem !important; }
+
+            /* Body scroll lock while drawer is open — prevents the page
+               behind the backdrop from scrolling, prevents horizontal
+               overflow caused by the drawer's slide-in transform. */
+            body.user-menu-open {
+                overflow: hidden !important;
+                overscroll-behavior: contain;
+                touch-action: none;
+            }
+        }
+
+        /* Respect reduced-motion: no slide animation, just instant show */
+        @media (prefers-reduced-motion: reduce) {
+            #userMenuWrapper .user-menu { transition: none !important; }
+            .user-menu-backdrop { transition: none !important; }
+        }
+
+        /* ==================================================================
            ===== USER MENU v6 — PREMIUM POLISH =====
            Modern, refined dropdown: spring-in open animation, glass surface,
            bigger gradient avatar with status ring, premium typography
@@ -3261,6 +3368,8 @@
     <div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
     <div class="offline-banner" id="offlineBanner">⚠️ Connection failed. Some features may not work. <button onclick="location.reload()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;padding:0.2rem 0.6rem;border-radius:4px;cursor:pointer;margin-left:0.5rem;font-weight:600;">Retry</button></div>
     <div class="mobile-nav-backdrop" id="mobileNavBackdrop" aria-hidden="true" hidden></div>
+    <!-- v1.6.8 — Dismiss-overlay for the mobile user-menu drawer. Tap to close. -->
+    <div class="user-menu-backdrop" id="userMenuBackdrop" onclick="toggleUserMenu(false)" aria-hidden="true"></div>
     <div class="toast-container" id="toastContainer" role="status" aria-live="polite" aria-atomic="false"></div>
     <div class="confetti-root" id="confettiRoot" aria-hidden="true"></div>
 
@@ -4733,13 +4842,33 @@
 
     function toggleAdminSidebar() { const sb=document.getElementById('adminSidebar'); const ov=document.getElementById('adminSidebarOverlay'); sb.classList.toggle('mobile-open'); ov.classList.toggle('active'); }
     function toggleFaq(el) { const item = el.parentElement; item.classList.toggle('active'); el.setAttribute('aria-expanded', item.classList.contains('active')); }
-    function toggleUserMenu() {
+    // v1.6.8 — toggleUserMenu now also drives the mobile drawer overlay
+    // and the body-scroll lock. Accepts an optional forceState:
+    //   toggleUserMenu()        -> flip
+    //   toggleUserMenu(true)    -> open
+    //   toggleUserMenu(false)   -> close
+    // Called by the avatar button, the backdrop's onclick, the Escape
+    // handler, and the document click-outside handler below.
+    function toggleUserMenu(forceState) {
         const menu = document.getElementById('userMenu');
         const btn = document.getElementById('userAvatarBtn');
+        const backdrop = document.getElementById('userMenuBackdrop');
         if (!menu) return;
-        const next = !menu.classList.contains('active');
-        menu.classList.toggle('active');
-        if (btn) btn.setAttribute('aria-expanded', next ? 'true' : 'false');
+        const willOpen = (typeof forceState === 'boolean')
+            ? forceState
+            : !menu.classList.contains('active');
+        menu.classList.toggle('active', willOpen);
+        if (btn) btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        if (backdrop) backdrop.classList.toggle('active', willOpen);
+        // Body scroll-lock only matters in mobile-drawer mode (<=768px).
+        // On desktop the dropdown floats over the page; locking would
+        // cause a jarring scrollbar-width layout shift.
+        const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+        if (isMobile && willOpen) {
+            document.body.classList.add('user-menu-open');
+        } else {
+            document.body.classList.remove('user-menu-open');
+        }
     }
 
     document.addEventListener('click', e => {
@@ -4749,14 +4878,23 @@
             if (type) closeModal(type);
             return;
         }
-        if (!e.target.closest('#userMenuWrapper')) {
-            document.getElementById('userMenu')?.classList.remove('active');
-            document.getElementById('userAvatarBtn')?.setAttribute('aria-expanded', 'false');
+        // v1.6.8 — user-menu drawer dismissal logic.
+        // Close when: (a) the click was completely outside the wrapper +
+        // backdrop, OR (b) the user tapped one of the drawer's menu
+        // items (Dashboard / Courses / Admin / Sign Out) so the action's
+        // overlay doesn't render on top of a still-open drawer.
+        const menu = document.getElementById('userMenu');
+        if (!menu || !menu.classList.contains('active')) return;
+        const inWrapper = !!e.target.closest('#userMenuWrapper');
+        const inBackdrop = !!e.target.closest('#userMenuBackdrop');
+        const isMenuItem = !!e.target.closest('.user-menu-item');
+        if ((!inWrapper && !inBackdrop) || isMenuItem) {
+            toggleUserMenu(false);
         }
     });
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
-        // Priority: modals > overlays (admin/dashboard/pdf)
+        // Priority: modals > overlays (admin/dashboard/pdf) > user-menu drawer
         if (Modal.isAnyOpen()) {
             e.preventDefault();
             Modal.closeAll();
@@ -4765,6 +4903,14 @@
         if (Overlay.anyOpen()) {
             e.preventDefault();
             Overlay.closeTop();
+            return;
+        }
+        // v1.6.8 — close the user-menu drawer on Escape (a11y)
+        const userMenu = document.getElementById('userMenu');
+        if (userMenu && userMenu.classList.contains('active')) {
+            e.preventDefault();
+            toggleUserMenu(false);
+            document.getElementById('userAvatarBtn')?.focus();
         }
     });
     document.querySelectorAll('.mobile-nav a').forEach(a => a.addEventListener('click', () => document.getElementById('mobileNav').classList.remove('active')));

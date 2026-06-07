@@ -1,13 +1,16 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.7 — Mobile go-live fixes (revised):
-   * Removed hamburger button + mobile-nav drawer entirely. The mobile
-     header now keeps every control visible (logo, search, theme cycle,
-     login/user-icon) — no drawer needed since the user menu already
-     surfaces everything the drawer offered.
-   * Pricing cards now stack 1-column on phones regardless of plan count
-     (fix the "two half-cards side-by-side" bug for 2-plan layouts).
-     min(100%, Npx) in renderPricingPlans() + !important CSS belt. */
-const VERSION = 'hiq-v1.6.7';
+   v1.6.8 — User-menu mobile drawer fix:
+   * On phones (<=768px) the avatar dropdown was clipped at the right
+     edge because the 300px absolute-positioned panel didn't fit next
+     to the wrapper at the viewport edge. Promoted it to a proper
+     fixed-position right-side drawer pinned to viewport edges:
+       - width: min(90vw, 320px), min-width: 260px
+       - full viewport height (100dvh, iOS safe-area aware)
+       - slide-in from the right (translateX 100% -> 0)
+       - tap-to-dismiss backdrop + body scroll-lock while open
+       - bigger touch targets, Escape key + menu-item auto-close.
+     Desktop UI unchanged. */
+const VERSION = 'hiq-v1.6.8';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
