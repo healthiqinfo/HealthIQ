@@ -1613,10 +1613,8 @@
         [data-theme="dark"] .dash-hero-avatar * { text-shadow: none; }
         [data-theme="dark"] .dash-hero-avatar { color: #1e40af; }
 
-        /* OLED mode: keep the gradient (don't go pitch-black) so contrast holds */
-        [data-theme="dark"][data-oled] .dash-hero {
-            background: linear-gradient(135deg, #0f6fec 0%, #6366f1 45%, #8b5cf6 100%) !important;
-        }
+        /* (v11.4 below now owns the OLED hero — this old loud-gradient
+           fallback was a holdover from v11.1 contrast hardening) */
 
         /* ==================================================================
            ===== DASHBOARD ELITE v11.2 — OBSIDIAN HERO + RHYTHM =====
@@ -1860,6 +1858,177 @@
         }
         @media (prefers-reduced-motion: reduce) {
             .admin-welcome-orb-1, .admin-welcome-orb-2 { animation: none; }
+        }
+
+        /* ==================================================================
+           ===== DASHBOARD ELITE v11.4 — OLED TRUE BLACK =====
+           When [data-oled] is on, every dark surface becomes pure #000000
+           so AMOLED pixels physically switch OFF (max battery savings +
+           infinite contrast). We keep the cyan/violet orbs as decoration
+           on TOP of the black surface so the design still has personality
+           — just zero ambient brightness from the underlying gradient.
+
+           Important: every selector here uses the [data-oled] attribute
+           specifically, so daytime "dark" mode keeps the rich obsidian
+           palette. ONLY users who explicitly opt into OLED get true black.
+           ================================================================== */
+
+        /* 1) Hero surfaces — pure black with only faint accent washes */
+        [data-theme="dark"][data-oled] .dash-hero {
+            background:
+                radial-gradient(circle at 18% 22%, rgba(99, 102, 241, 0.12), transparent 50%),
+                radial-gradient(circle at 82% 78%, rgba(34, 211, 238, 0.08), transparent 50%),
+                #000000 !important;
+            background-size: auto !important;
+            border-color: rgba(255, 255, 255, 0.10) !important;
+            box-shadow:
+                0 0 0 1px rgba(255, 255, 255, 0.04),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+        }
+        [data-theme="dark"][data-oled] .admin-welcome {
+            background:
+                radial-gradient(circle at 18% 22%, rgba(99, 102, 241, 0.14), transparent 50%),
+                radial-gradient(circle at 82% 78%, rgba(34, 211, 238, 0.10), transparent 50%),
+                #000000 !important;
+            background-size: auto !important;
+            border-color: rgba(255, 255, 255, 0.10) !important;
+            box-shadow:
+                0 0 0 1px rgba(255, 255, 255, 0.04),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+        }
+
+        /* 2) Orbs get a touch more punch on true black so they still glow */
+        [data-theme="dark"][data-oled] .dash-hero::before {
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.65), transparent 70%) !important;
+        }
+        [data-theme="dark"][data-oled] .dash-hero::after {
+            background: radial-gradient(circle, rgba(34, 211, 238, 0.55), transparent 70%) !important;
+        }
+        [data-theme="dark"][data-oled] .admin-welcome-orb-1 {
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.65), transparent 70%);
+        }
+        [data-theme="dark"][data-oled] .admin-welcome-orb-2 {
+            background: radial-gradient(circle, rgba(34, 211, 238, 0.55), transparent 70%);
+        }
+
+        /* 3) Glass panel + metric chips — barely-there glass on black */
+        [data-theme="dark"][data-oled] .dash-hero-panel,
+        [data-theme="dark"][data-oled] .dash-hero-metric {
+            background: rgba(255, 255, 255, 0.04) !important;
+            border-color: rgba(255, 255, 255, 0.10) !important;
+        }
+        [data-theme="dark"][data-oled] .dash-hero-badge {
+            background: rgba(255, 255, 255, 0.04) !important;
+            border-color: rgba(255, 255, 255, 0.14) !important;
+            box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.30), 0 0 16px -4px rgba(99, 102, 241, 0.4);
+        }
+
+        /* 4) Dashboard cards — pure black with subtle accent border on hover */
+        [data-theme="dark"][data-oled] .dash-stat,
+        [data-theme="dark"][data-oled] .dash-goal-card,
+        [data-theme="dark"][data-oled] .dash-grid-2 > *,
+        [data-theme="dark"][data-oled] .admin-stat-card,
+        [data-theme="dark"][data-oled] .admin-table-wrapper,
+        [data-theme="dark"][data-oled] .admin-activity,
+        [data-theme="dark"][data-oled] .settings-card {
+            background: #000000 !important;
+            border-color: rgba(255, 255, 255, 0.08) !important;
+            box-shadow: none !important;
+        }
+        [data-theme="dark"][data-oled] .dash-stat:hover,
+        [data-theme="dark"][data-oled] .admin-stat-card:hover,
+        [data-theme="dark"][data-oled] .admin-activity:hover,
+        [data-theme="dark"][data-oled] .settings-card:hover {
+            border-color: rgba(99, 102, 241, 0.30) !important;
+            box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.12), 0 12px 28px -16px rgba(99, 102, 241, 0.35) !important;
+        }
+
+        /* Goal card amber accent kept just bright enough to remain recognisable */
+        [data-theme="dark"][data-oled] .dash-goal-card {
+            background:
+                radial-gradient(circle at 12% 50%, rgba(245, 158, 11, 0.10), transparent 60%),
+                #000000 !important;
+            border-color: rgba(245, 158, 11, 0.25) !important;
+        }
+
+        /* 5) Modals, dropdowns, popovers — true black sheets */
+        [data-theme="dark"][data-oled] .modal,
+        [data-theme="dark"][data-oled] .user-menu,
+        [data-theme="dark"][data-oled] .notif-center,
+        [data-theme="dark"][data-oled] .cmdk-panel,
+        [data-theme="dark"][data-oled] .toast,
+        [data-theme="dark"][data-oled] .conn-status,
+        [data-theme="dark"][data-oled] .pdf-viewer-bar,
+        [data-theme="dark"][data-oled] .fab-menu {
+            background: #000000 !important;
+            border-color: rgba(255, 255, 255, 0.10) !important;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 24px 48px -12px rgba(0, 0, 0, 0.9) !important;
+        }
+
+        /* 6) Table rows — pure black with hover accent */
+        [data-theme="dark"][data-oled] .admin-table th {
+            background: #000000 !important;
+            color: #94a3b8 !important;
+            border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+        }
+        [data-theme="dark"][data-oled] .admin-table td {
+            background: #000000 !important;
+            border-bottom-color: rgba(255, 255, 255, 0.05) !important;
+        }
+        [data-theme="dark"][data-oled] .admin-table tr:hover td {
+            background: rgba(99, 102, 241, 0.08) !important;
+        }
+
+        /* 7) Inputs — true black with bright focus ring */
+        [data-theme="dark"][data-oled] input,
+        [data-theme="dark"][data-oled] textarea,
+        [data-theme="dark"][data-oled] select,
+        [data-theme="dark"][data-oled] .settings-field input,
+        [data-theme="dark"][data-oled] .settings-field textarea {
+            background: #000000 !important;
+            border-color: rgba(255, 255, 255, 0.12) !important;
+            color: #f1f5f9 !important;
+        }
+        [data-theme="dark"][data-oled] input:focus,
+        [data-theme="dark"][data-oled] textarea:focus,
+        [data-theme="dark"][data-oled] select:focus {
+            border-color: rgba(99, 102, 241, 0.6) !important;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important;
+        }
+
+        /* 8) Sidebar — pure black, no gradient */
+        [data-theme="dark"][data-oled] .admin-sidebar {
+            background: #000000 !important;
+            border-right-color: rgba(255, 255, 255, 0.08) !important;
+        }
+        [data-theme="dark"][data-oled] .admin-sidebar-item {
+            color: #94a3b8 !important;
+        }
+        [data-theme="dark"][data-oled] .admin-sidebar-item:hover {
+            background: rgba(99, 102, 241, 0.12) !important;
+            color: #c4b5fd !important;
+        }
+        [data-theme="dark"][data-oled] .admin-sidebar-item.active {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.20)) !important;
+            color: #fff !important;
+            box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.4), 0 8px 20px -8px rgba(139, 92, 246, 0.5) !important;
+        }
+
+        /* 9) Header bar — pure black */
+        [data-theme="dark"][data-oled] .admin-header,
+        [data-theme="dark"][data-oled] .dash-header,
+        [data-theme="dark"][data-oled] .navbar {
+            background: rgba(0, 0, 0, 0.92) !important;
+            border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        /* 10) Theme-color meta hint for the browser chrome on AMOLED phones */
+        /*     (the JS already swaps this on theme change — this just nudges
+                the spec'd value for the user's mobile address bar to true black) */
+        [data-theme="dark"][data-oled] {
+            color-scheme: dark;
         }
 
         /* Smooth scrollbar inside admin/dashboard */
@@ -2751,14 +2920,311 @@
         /* 17) Course-card refined elevation on hover (sits well with tilt) */
         .course-card, .pricing-card { transition: transform 0.35s cubic-bezier(0.2,0.9,0.3,1.05), box-shadow 0.35s, border-color 0.25s; }
 
-        /* 18) OLED mode toggle button in user menu */
-        .oled-toggle {
-            display: inline-flex; align-items: center; gap: 0.4rem;
-            padding: 0.3rem 0.6rem; border-radius: 999px;
-            background: var(--gray-100); border: 1px solid var(--gray-200);
-            font-size: 0.7rem; font-weight: 700; cursor: pointer; color: var(--gray-600);
+        /* 18) Theme-cycle button — Light -> Dark -> OLED -> Light
+              Single header button, three modes. Icon morphs per state. */
+        .theme-cycle {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.1);
         }
-        .oled-toggle.is-on { background: #000; color: #fff; border-color: #000; }
+        .theme-cycle .theme-cycle-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.05rem;
+            transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+            line-height: 1;
+        }
+        .theme-cycle:hover .theme-cycle-icon { transform: rotate(20deg) scale(1.1); }
+        .theme-cycle:active { transform: scale(0.92); }
+        /* Light mode: warm sun glow */
+        .theme-cycle[data-theme-mode="light"] {
+            background: linear-gradient(135deg, #fef3c7, #fde68a) !important;
+            border-color: #fcd34d !important;
+            box-shadow: 0 4px 12px -4px rgba(245, 158, 11, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        }
+        /* Dark mode: indigo glow */
+        .theme-cycle[data-theme-mode="dark"] {
+            background: linear-gradient(135deg, #1e1b4b, #312e81) !important;
+            border-color: rgba(165, 180, 252, 0.4) !important;
+            color: #c7d2fe;
+            box-shadow: 0 4px 12px -4px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+        /* OLED mode: pure black with violet ring */
+        .theme-cycle[data-theme-mode="oled"] {
+            background: #000 !important;
+            border-color: rgba(139, 92, 246, 0.5) !important;
+            color: #c4b5fd;
+            box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.25), 0 0 16px -4px rgba(139, 92, 246, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .theme-cycle .theme-cycle-icon, .theme-cycle { transition: none; }
+            .theme-cycle:hover .theme-cycle-icon { transform: none; }
+        }
+
+        /* ==================================================================
+           ===== USER MENU v6 — PREMIUM POLISH =====
+           Modern, refined dropdown: spring-in open animation, glass surface,
+           bigger gradient avatar with status ring, premium typography
+           hierarchy, hairline dividers, accent indicators on hover.
+           Designed to feel like Linear / Notion / Vercel account menus.
+           ================================================================== */
+
+        /* 1) Surface — glass, premium shadow, accent top edge */
+        .user-menu {
+            min-width: 300px !important;
+            border-radius: 18px !important;
+            padding: 0 !important;
+            background: rgba(255, 255, 255, 0.96) !important;
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            border: 1px solid rgba(15, 23, 42, 0.08) !important;
+            box-shadow:
+                0 0 0 1px rgba(15, 23, 42, 0.04),
+                0 24px 56px -16px rgba(15, 23, 42, 0.22),
+                0 12px 24px -12px rgba(15, 23, 42, 0.12) !important;
+            transform: translateY(-12px) scale(0.96);
+            opacity: 0;
+            transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.25), opacity 0.2s ease;
+        }
+        .user-menu.active {
+            display: block !important;
+            transform: translateY(0) scale(1);
+            opacity: 1;
+        }
+        .user-menu::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 12%; right: 12%; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.4), transparent);
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .user-menu { transition: opacity 0.15s ease !important; transform: none; }
+            .user-menu.active { transform: none; }
+        }
+
+        /* 2) Header — bigger avatar with gradient ring + status dot, refined type */
+        .user-menu-header {
+            display: grid !important;
+            grid-template-columns: 56px 1fr;
+            align-items: center;
+            gap: 1rem !important;
+            padding: 1.35rem 1.25rem 1.1rem !important;
+            background:
+                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.10), transparent 60%),
+                radial-gradient(circle at 100% 100%, rgba(14, 165, 233, 0.08), transparent 60%),
+                linear-gradient(180deg, rgba(248, 250, 252, 0.6), rgba(248, 250, 252, 0)) !important;
+            border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
+            position: relative;
+        }
+        .user-menu-avatar {
+            width: 52px !important; height: 52px !important;
+            font-size: 1.15rem !important;
+            background: linear-gradient(135deg, #0f6fec, #6366f1 50%, #8b5cf6) !important;
+            box-shadow:
+                0 8px 20px -6px rgba(99, 102, 241, 0.55),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3),
+                0 0 0 3px rgba(255, 255, 255, 0.9),
+                0 0 0 4px rgba(99, 102, 241, 0.2) !important;
+            position: relative;
+            letter-spacing: 0.5px;
+        }
+        /* Online status dot — bottom-right of avatar */
+        .user-menu-avatar::after {
+            content: '';
+            position: absolute;
+            bottom: 0; right: 0;
+            width: 14px; height: 14px;
+            background: #10b981;
+            border-radius: 50%;
+            border: 2.5px solid #fff;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+        }
+        .user-menu-info { min-width: 0; }
+        .user-menu-name {
+            font-size: 1rem !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.2px;
+            color: #0f172a !important;
+            line-height: 1.25 !important;
+            margin-bottom: 2px;
+        }
+        .user-menu-email {
+            font-size: 0.78rem !important;
+            color: #64748b !important;
+            margin-top: 0 !important;
+            font-weight: 500;
+            letter-spacing: 0.1px;
+        }
+        .user-menu-role {
+            margin-top: 8px !important;
+            padding: 3px 10px !important;
+            font-size: 0.62rem !important;
+            letter-spacing: 0.6px !important;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08)) !important;
+            color: #4f46e5 !important;
+            border: 1px solid rgba(99, 102, 241, 0.18);
+        }
+        .user-menu-role.admin {
+            background: linear-gradient(135deg, #fef3c7, #fde68a) !important;
+            color: #92400e !important;
+            border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        /* 3) Sections — generous breathing room with hairline dividers */
+        .user-menu-section {
+            padding: 0.5rem 0.6rem !important;
+        }
+        .user-menu-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(15, 23, 42, 0.08) 20%, rgba(15, 23, 42, 0.08) 80%, transparent);
+            margin: 0 0.6rem;
+        }
+
+        /* 4) Items — refined hover with accent left bar */
+        .user-menu-item {
+            padding: 0.7rem 0.85rem !important;
+            border-radius: 12px !important;
+            font-size: 0.9rem !important;
+            font-weight: 600 !important;
+            gap: 0.85rem !important;
+            position: relative;
+            isolation: isolate;
+        }
+        .user-menu-item::before {
+            content: '';
+            position: absolute;
+            left: 4px; top: 50%;
+            transform: translateY(-50%) scaleY(0);
+            width: 3px; height: 22px;
+            border-radius: 0 3px 3px 0;
+            background: linear-gradient(180deg, #0f6fec, #6366f1);
+            transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.25);
+            transform-origin: center;
+            z-index: -1;
+        }
+        .user-menu-item:hover::before { transform: translateY(-50%) scaleY(1); }
+        .user-menu-item:hover {
+            transform: none !important;
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.10), rgba(99, 102, 241, 0.02)) !important;
+        }
+        .user-menu-item .umi-icon {
+            width: 34px !important; height: 34px !important;
+            border-radius: 10px !important;
+            font-size: 1rem !important;
+            background: linear-gradient(135deg, #f1f5f9, #e2e8f0) !important;
+            color: #475569 !important;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 1px 2px rgba(15, 23, 42, 0.05);
+        }
+        .user-menu-item:hover .umi-icon {
+            background: linear-gradient(135deg, #0f6fec, #6366f1) !important;
+            color: #fff !important;
+            box-shadow: 0 6px 14px -4px rgba(99, 102, 241, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+            transform: scale(1.08) rotate(-4deg);
+        }
+        .user-menu-item .umi-arrow {
+            font-size: 1rem !important;
+            font-weight: 700;
+            color: #cbd5e1 !important;
+        }
+        .user-menu-item:hover .umi-arrow {
+            color: #6366f1 !important;
+            transform: translateX(2px) !important;
+        }
+        .user-menu-item.admin-item:hover .umi-icon {
+            background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+            box-shadow: 0 6px 14px -4px rgba(245, 158, 11, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+        }
+        .user-menu-item.danger:hover .umi-icon {
+            background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+            box-shadow: 0 6px 14px -4px rgba(239, 68, 68, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+        }
+        .user-menu-item.danger::before {
+            background: linear-gradient(180deg, #ef4444, #dc2626) !important;
+        }
+        .user-menu-item.danger:hover {
+            background: linear-gradient(90deg, rgba(239, 68, 68, 0.10), rgba(239, 68, 68, 0.02)) !important;
+        }
+
+        /* 5) Dark mode adjustments */
+        [data-theme="dark"] .user-menu {
+            background: rgba(20, 28, 46, 0.92) !important;
+            border-color: rgba(255, 255, 255, 0.08) !important;
+            box-shadow:
+                0 0 0 1px rgba(255, 255, 255, 0.04),
+                0 24px 56px -16px rgba(0, 0, 0, 0.7),
+                0 12px 24px -12px rgba(0, 0, 0, 0.5) !important;
+        }
+        [data-theme="dark"] .user-menu-header {
+            background:
+                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.18), transparent 60%),
+                radial-gradient(circle at 100% 100%, rgba(14, 165, 233, 0.12), transparent 60%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent) !important;
+            border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+        }
+        [data-theme="dark"] .user-menu-avatar {
+            box-shadow:
+                0 8px 20px -6px rgba(99, 102, 241, 0.6),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3),
+                0 0 0 3px rgba(20, 28, 46, 1),
+                0 0 0 4px rgba(99, 102, 241, 0.4) !important;
+        }
+        [data-theme="dark"] .user-menu-avatar::after { border-color: #141c2e; }
+        [data-theme="dark"] .user-menu-name { color: #f8fafc !important; }
+        [data-theme="dark"] .user-menu-email { color: #94a3b8 !important; }
+        [data-theme="dark"] .user-menu-role {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15)) !important;
+            color: #c7d2fe !important;
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+        [data-theme="dark"] .user-menu-divider {
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08) 20%, rgba(255, 255, 255, 0.08) 80%, transparent);
+        }
+        [data-theme="dark"] .user-menu-item { color: #e2e8f0 !important; }
+        [data-theme="dark"] .user-menu-item .umi-icon {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03)) !important;
+            color: #94a3b8 !important;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+        [data-theme="dark"] .user-menu-item:hover {
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.03)) !important;
+            color: #fff !important;
+        }
+        [data-theme="dark"] .user-menu-item .umi-arrow { color: #475569 !important; }
+
+        /* 6) OLED — pure black with violet glow */
+        [data-theme="dark"][data-oled] .user-menu {
+            background: #000 !important;
+            border-color: rgba(255, 255, 255, 0.10) !important;
+            box-shadow:
+                0 0 0 1px rgba(255, 255, 255, 0.04),
+                0 24px 56px -16px rgba(0, 0, 0, 0.95),
+                0 0 32px -8px rgba(139, 92, 246, 0.25) !important;
+        }
+        [data-theme="dark"][data-oled] .user-menu-header {
+            background:
+                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.20), transparent 60%),
+                radial-gradient(circle at 100% 100%, rgba(34, 211, 238, 0.12), transparent 60%),
+                #000 !important;
+            border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+        }
+        [data-theme="dark"][data-oled] .user-menu-avatar::after { border-color: #000; }
+        [data-theme="dark"][data-oled] .user-menu-divider {
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.10) 20%, rgba(255, 255, 255, 0.10) 80%, transparent);
+        }
+
+        /* 7) Mobile — full-width sheet for thumb reach */
+        @media (max-width: 480px) {
+            .user-menu {
+                min-width: calc(100vw - 24px) !important;
+                right: 12px !important;
+                left: 12px !important;
+                border-radius: 20px !important;
+            }
+            .user-menu-name { font-size: 1.05rem !important; }
+            .user-menu-item { padding: 0.85rem 0.85rem !important; font-size: 0.95rem !important; }
+            .user-menu-item .umi-icon { width: 38px !important; height: 38px !important; }
+        }
     </style>
 </head>
 <body>
@@ -2796,7 +3262,9 @@
             </ul>
             <div class="nav-actions">
                 <button type="button" class="cmdk-hint-btn" onclick="CommandPalette.open()" aria-label="Open command palette (Ctrl+K)" title="Search · Ctrl+K"><span>&#x1F50D;</span><span class="kbd-label">Search</span><span class="kbd">&#x2318;K</span></button>
-                <button class="dark-toggle" onclick="toggleDark()" aria-label="Toggle dark mode">&#x1F319;</button>
+                <button class="theme-cycle dark-toggle" id="themeCycleBtn" onclick="cycleTheme()" aria-label="Cycle theme: light, dark, OLED" title="Cycle theme: Light → Dark → OLED">
+                    <span class="theme-cycle-icon" aria-hidden="true">&#x2600;&#xFE0F;</span>
+                </button>
                 <div id="authButtons">
                     <button class="btn btn-primary" onclick="openModal('login')">Login</button>
                 </div>
@@ -2830,10 +3298,6 @@
                         </div>
                         <div class="user-menu-divider"></div>
                         <div class="user-menu-section">
-                            <button class="user-menu-item" onclick="toggleOLED()">
-                                <span class="umi-icon">&#x26AB;</span>
-                                <span>OLED True-Black <button type="button" class="oled-toggle" onclick="event.stopPropagation();toggleOLED();return false;" aria-label="Toggle OLED mode">ON</button></span>
-                            </button>
                             <button class="user-menu-item danger" onclick="logout()">
                                 <span class="umi-icon">&#x1F6AA;</span>
                                 <span>Sign Out</span>
@@ -3316,11 +3780,63 @@
         return t;
     }
     function toggleDark() {
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        document.documentElement.setAttribute('data-theme', isDark ? '' : 'dark');
-        localStorage.setItem('theme', isDark ? 'light' : 'dark');
-        document.querySelectorAll('.dark-toggle').forEach(b=>b.innerHTML = isDark ? '&#x1F319;' : '&#x1F31D;');
-        if (typeof syncThemeColor === 'function') syncThemeColor();
+        // Legacy single-tap entry point — delegate to the new 3-way cycle
+        // so anything still calling toggleDark() (keyboard shortcut, etc.)
+        // keeps working.
+        cycleTheme();
+    }
+
+    /* Theme cycle — Light -> Dark -> OLED -> Light
+       Single button, three states. Persists to localStorage and syncs
+       the mobile address-bar color via syncThemeColor(). */
+    const THEME_MODES = ['light', 'dark', 'oled'];
+    const THEME_ICONS = { light: '\u2600\uFE0F', dark: '\u{1F319}', oled: '\u26AB' };
+    const THEME_LABELS = { light: 'Light mode', dark: 'Dark mode', oled: 'OLED true-black mode' };
+
+    function getThemeMode() {
+        const html = document.documentElement;
+        if (html.hasAttribute('data-oled')) return 'oled';
+        if (html.getAttribute('data-theme') === 'dark') return 'dark';
+        return 'light';
+    }
+
+    function applyThemeMode(mode) {
+        const html = document.documentElement;
+        if (mode === 'oled') {
+            html.setAttribute('data-theme', 'dark');
+            html.setAttribute('data-oled', '1');
+        } else if (mode === 'dark') {
+            html.setAttribute('data-theme', 'dark');
+            html.removeAttribute('data-oled');
+        } else {
+            html.removeAttribute('data-theme');
+            html.removeAttribute('data-oled');
+        }
+        // Persist (single source of truth — keep both keys for backward compat)
+        localStorage.setItem('theme', mode === 'light' ? 'light' : 'dark');
+        localStorage.setItem('oled', mode === 'oled' ? '1' : '0');
+        localStorage.setItem('themeMode', mode);
+        // Update the icon on every cycle button
+        document.querySelectorAll('#themeCycleBtn .theme-cycle-icon, .dark-toggle .theme-cycle-icon')
+            .forEach(el => { el.textContent = THEME_ICONS[mode]; });
+        // Update aria-label for screen readers
+        document.querySelectorAll('#themeCycleBtn, .dark-toggle.theme-cycle').forEach(btn => {
+            const nextMode = THEME_MODES[(THEME_MODES.indexOf(mode) + 1) % THEME_MODES.length];
+            btn.setAttribute('aria-label', `Current: ${THEME_LABELS[mode]}. Click for ${THEME_LABELS[nextMode]}`);
+            btn.setAttribute('title', `${THEME_LABELS[mode]} · Click for ${THEME_LABELS[nextMode]}`);
+            btn.setAttribute('data-theme-mode', mode);
+        });
+        // Sync mobile browser chrome
+        try { syncThemeColor(); } catch (_) {}
+    }
+
+    function cycleTheme() {
+        const current = getThemeMode();
+        const next = THEME_MODES[(THEME_MODES.indexOf(current) + 1) % THEME_MODES.length];
+        applyThemeMode(next);
+        if (typeof showToast === 'function') {
+            showToast(THEME_LABELS[next], 'info', 2200);
+        }
     }
     function toggleMobile(forceState) {
         const nav = document.getElementById('mobileNav');
@@ -3455,8 +3971,12 @@
     function syncThemeColor() {
         let meta = document.querySelector('meta[name="theme-color"]');
         if (!meta) { meta = document.createElement('meta'); meta.name = 'theme-color'; document.head.appendChild(meta); }
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        meta.content = isDark ? '#0a0f1a' : '#0f6fec';
+        const html = document.documentElement;
+        const isDark = html.getAttribute('data-theme') === 'dark';
+        const isOled = html.hasAttribute('data-oled');
+        // OLED forces pure #000 so the mobile address bar matches the
+        // true-black surface (and AMOLED pixels physically switch off).
+        meta.content = isOled && isDark ? '#000000' : (isDark ? '#0a0f1a' : '#0f6fec');
     }
 
     // CSS-only confetti burst (non-blocking, auto-clean)
@@ -4015,14 +4535,15 @@
     })();
 
     // OLED dark mode (true black) — opt-in, persisted
+    // Kept as a legacy function so anything still calling it (older shortcuts,
+    // toast retry actions, the SW message channel) keeps working — but the
+    // new entry point is cycleTheme() in the header.
     function toggleOLED() {
-        const html = document.documentElement;
-        const on = html.hasAttribute('data-oled');
-        if (on) { html.removeAttribute('data-oled'); localStorage.setItem('oled', '0'); }
-        else { html.setAttribute('data-oled', '1'); localStorage.setItem('oled', '1'); }
-        // Sync any OLED toggle UI
-        document.querySelectorAll('.oled-toggle').forEach(b => b.classList.toggle('is-on', !on));
-        showToast(on ? 'OLED mode off' : 'OLED true-black mode on', 'info');
+        const isOled = document.documentElement.hasAttribute('data-oled');
+        applyThemeMode(isOled ? 'dark' : 'oled');
+        if (typeof showToast === 'function') {
+            showToast(isOled ? 'OLED mode off' : 'OLED true-black mode on', 'info');
+        }
     }
     (function restoreOLED() {
         if (localStorage.getItem('oled') === '1') document.documentElement.setAttribute('data-oled', '1');
@@ -4189,10 +4710,10 @@
         ConnectionStatus.init();
         FabMenu.init();
         AdminAutoRefresh.restore();
-        // Restore OLED toggle visual state
-        if (document.documentElement.hasAttribute('data-oled')) {
-            document.querySelectorAll('.oled-toggle').forEach(b => b.classList.add('is-on'));
-        }
+        // Restore theme mode: paint the correct icon on the cycle button
+        // (the data-theme + data-oled attributes were already set by the
+        // restoreOLED IIFE and the boot line below — we just sync visuals.)
+        try { applyThemeMode(getThemeMode()); } catch (_) {}
     });
 
     function toggleAdminSidebar() { const sb=document.getElementById('adminSidebar'); const ov=document.getElementById('adminSidebarOverlay'); sb.classList.toggle('mobile-open'); ov.classList.toggle('active'); }
@@ -4232,7 +4753,7 @@
         }
     });
     document.querySelectorAll('.mobile-nav a').forEach(a => a.addEventListener('click', () => document.getElementById('mobileNav').classList.remove('active')));
-    if (localStorage.getItem('theme') === 'dark') { document.documentElement.setAttribute('data-theme','dark'); document.querySelectorAll('.dark-toggle').forEach(b=>b.innerHTML='&#x1F31D;'); }
+    if (localStorage.getItem('theme') === 'dark') { document.documentElement.setAttribute('data-theme','dark'); }
 
     // ===== SUPABASE =====
     const SUPABASE_URL = 'https://ejpwabynzdjfecsrgumh.supabase.co';

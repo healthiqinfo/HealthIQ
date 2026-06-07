@@ -1,10 +1,12 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.3 — Obsidian hero rolled out across the app: admin welcome
-   banner now matches user dashboard (midnight gradient + cyan/violet
-   floating orbs + 1px grid texture + frosted glass action buttons).
-   Replaces the loud blue→navy gradient + plain white circles with
-   the same premium SaaS treatment for brand consistency. */
-const VERSION = 'hiq-v1.6.3';
+   v1.6.5 — Tri-state theme cycle + premium user menu:
+   * Header button now cycles Light -> Dark -> OLED -> Light with a
+     morphing sun/moon/dot icon and mode-specific button skin.
+   * Removed redundant OLED toggle from inside the user-icon dropdown.
+   * User menu v6: bigger gradient avatar with status dot, refined
+     typography, accent-bar hover, glass surface with backdrop-blur,
+     full-width sheet on mobile, dark + OLED variants. */
+const VERSION = 'hiq-v1.6.5';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
