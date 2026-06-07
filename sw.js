@@ -1,24 +1,26 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.12 — FAB WhatsApp now stays in sync across tabs/devices:
-   * Problem: admin saved a new WhatsApp number on one device but the FAB
-     on another device (or same device after a stale page load) still
-     opened the old/default number, because APP.settings was only loaded
-     on the initial page boot.
+   v1.6.13 — Admin Settings now has VERIFIED save (no more silent fails):
+   * Problem: admin typed new WhatsApp number in Settings → Contact &
+     Social, clicked Save, saw "Settings saved!", but on reload / on
+     another device the old number came back. The upsert was returning
+     {data: null, error: null} (silent RLS block) and the old code
+     treated that as success.
    * Fix:
-     1. FAB menu now triggers a background refresh of the contact
-        settings from Supabase every time it opens (throttled to once
-        per 30s). By the time the user reads the menu and taps WhatsApp,
-        APP.settings.whatsapp_number is fresh.
-     2. FAB click logs the full resolution chain to devtools so any
-        future "wrong number" report is debuggable in <30 seconds.
-     3. fetchSettings() now surfaces a visible error toast for admins
-        when the site_settings table is missing or unreachable (was
-        silently console.warn'd before — easy to miss).
-     4. SUPABASE_DASHBOARD_SETUP.sql now ships the site_settings table
-        DDL + seed rows + RLS policy template, so fresh Supabase
-        projects don't end up with admin saves disappearing into a
-        void. */
-const VERSION = 'hiq-v1.6.12';
+     1. saveMultipleSettings + saveSetting now do `.upsert(...).select(...)`
+        so Supabase returns the actually-persisted rows. We verify every
+        key we sent came back with the exact value (catches RLS blocks,
+        triggers that mutate values, and partial writes).
+     2. Errors now include Supabase code + hint + details + a plain-
+        English explanation for common RLS / missing-table patterns —
+        no more vague "Save error: " toasts.
+     3. After successful save, the Settings tab re-renders so the admin
+        sees the canonical DB values (with normalisation applied, e.g.
+        WhatsApp stripped to digits-only).
+     4. WhatsApp number is now normalised to digits-only BEFORE save —
+        strips spaces, '+', '(' etc., so DB stores a clean wa.me-ready
+        value. Plus basic 10-15 digit length validation and email format
+        validation, surfaced as friendly warning toasts. */
+const VERSION = 'hiq-v1.6.13';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

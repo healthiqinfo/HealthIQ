@@ -5155,37 +5155,128 @@
         for(const k in DEFAULT_SETTINGS){ if(!APP.settings[k]) APP.settings[k]=DEFAULT_SETTINGS[k]; }
         applySettings();
     }
+    // v1.6.13 — Helper for human-readable Supabase error messages.
+    // PostgREST / Supabase error objects have {message, code, hint, details}
+    // and some failures (RLS blocks, missing policies) come back with super
+    // generic messages. This pulls out everything useful in one string so the
+    // admin actually sees WHY a save failed instead of a vague "Save error:".
+    function _fmtDbError(e, ctx) {
+        if (!e) return 'Unknown error';
+        const parts = [];
+        if (e.code) parts.push('code=' + e.code);
+        if (e.message) parts.push(e.message);
+        if (e.hint) parts.push('hint: ' + e.hint);
+        if (e.details) parts.push('details: ' + e.details);
+        const msg = parts.join(' | ') || String(e);
+        // Common RLS / permission patterns → friendlier explanation
+        if (/row-level security|RLS|permission denied|policy/i.test(msg)) {
+            return (ctx || 'Save') + ' blocked by Supabase Row-Level Security. '
+                + 'Either disable RLS on `site_settings` or add an admin-write policy. '
+                + 'Raw: ' + msg;
+        }
+        if (/relation .* does not exist|does not exist/i.test(msg)) {
+            return (ctx || 'Save') + ' failed: the `site_settings` table is missing. '
+                + 'Run SUPABASE_DASHBOARD_SETUP.sql in the SQL Editor. Raw: ' + msg;
+        }
+        return msg;
+    }
+
     async function saveSetting(key,value) {
-        if(!isSupabaseConfigured()) return;
+        if(!isSupabaseConfigured()) { showToast('Database not configured', 'error'); return false; }
         // Optimistic update — remember previous value so we can roll back if the
         // write fails (otherwise local UI shows the new value but DB still has old).
         const prev = APP.settings[key];
         APP.settings[key]=value;
         try {
-            const {error}=await db.from('site_settings').upsert({key,value,updated_at:new Date().toISOString()},{onConflict:'key'});
+            // v1.6.13 — Verified save: ask Supabase to return the row after upsert
+            // so we can confirm it actually persisted (silent RLS blocks return
+            // empty data with no error in some configs).
+            const {data, error}=await db.from('site_settings')
+                .upsert({key,value,updated_at:new Date().toISOString()},{onConflict:'key'})
+                .select('key,value');
             if(error) throw error;
+            const persisted = (data || []).find(r => r.key === key);
+            if (!persisted) {
+                throw new Error('Upsert returned no rows — likely an RLS policy is blocking writes. '
+                    + 'Check Supabase → Authentication → Policies on site_settings.');
+            }
+            if (String(persisted.value) !== String(value)) {
+                throw new Error('Verification mismatch: DB stored "' + persisted.value
+                    + '" but you sent "' + value + '". A trigger or RLS clause may be altering the value.');
+            }
+            console.debug('[saveSetting] verified persistence:', { key, value: persisted.value });
+            return true;
         } catch(e){
+            console.error('[saveSetting] failed:', e);
             APP.settings[key] = prev; // rollback
-            showToast('Save error: '+e.message,'error');
+            showToast(_fmtDbError(e, 'Save'), 'error');
+            return false;
         }
     }
     async function saveMultipleSettings(obj) {
-        if(!isSupabaseConfigured()) return;
-        const rows=Object.entries(obj).map(([key,value])=>({key,value,updated_at:new Date().toISOString()}));
+        if(!isSupabaseConfigured()) { showToast('Database not configured', 'error'); return false; }
+        const keys = Object.keys(obj);
+        const rows=keys.map(key=>({key,value:obj[key],updated_at:new Date().toISOString()}));
         // Snapshot previous values for rollback on failure.
         const prev = {};
-        for(const k in obj){ prev[k] = APP.settings[k]; }
+        for(const k of keys){ prev[k] = APP.settings[k]; }
         Object.assign(APP.settings, obj);
+        console.debug('[saveMultipleSettings] sending:', obj);
         try {
-            const {error}=await db.from('site_settings').upsert(rows,{onConflict:'key'});
+            // v1.6.13 — Verified save: ask Supabase to return what got written
+            // so we can compare against what we sent. A silent RLS block returns
+            // {data: [], error: null} in some Supabase configurations, which the
+            // old code treated as success. Now we explicitly verify every row
+            // round-tripped with the value we sent.
+            const {data, error}=await db.from('site_settings')
+                .upsert(rows,{onConflict:'key'})
+                .select('key,value');
             if(error) throw error;
-            showToast('Settings saved!');
+            console.debug('[saveMultipleSettings] DB returned:', data);
+            // Verify EVERY key we tried to save was actually persisted
+            const persistedMap = {};
+            (data || []).forEach(r => { persistedMap[r.key] = r.value; });
+            const missing = keys.filter(k => !(k in persistedMap));
+            const mismatched = keys.filter(k => k in persistedMap && String(persistedMap[k]) !== String(obj[k]));
+            if (missing.length) {
+                throw new Error('Save returned no row for: ' + missing.join(', ')
+                    + '. Most likely an RLS policy is blocking writes to site_settings. '
+                    + 'Either disable RLS on that table or add a policy allowing admin upserts.');
+            }
+            if (mismatched.length) {
+                throw new Error('Save round-trip mismatch on: ' + mismatched.map(k =>
+                    k + ' (sent "' + obj[k] + '", got "' + persistedMap[k] + '")'
+                ).join('; '));
+            }
+            // ✓ Verified — every key persisted with the exact value sent.
+            // Show a richer toast that includes WHAT was saved so the admin
+            // sees the actual canonical DB value (not just their input).
+            const summary = keys.map(k => {
+                const v = String(persistedMap[k] || '');
+                const shown = v.length > 32 ? v.slice(0, 32) + '…' : v;
+                return k + ': ' + (shown || '(empty)');
+            }).join('  ·  ');
+            showToast('✓ Saved & verified — ' + summary, 'success');
             applySettings();
+            // v1.6.13 — Re-render the Settings tab so the admin sees the
+            // canonical DB values (with normalisation applied, e.g. WhatsApp
+            // stripped to digits-only). Wrapped in setTimeout so the success
+            // toast fires first and the user sees the confirmation.
+            setTimeout(() => {
+                const adminContent = document.getElementById('adminContent');
+                if (adminContent && typeof renderAdminSettings === 'function'
+                    && adminContent.querySelector('#s_whatsapp_number, #s_upi_id, #s_hero_badge')) {
+                    renderAdminSettings();
+                }
+            }, 400);
+            return true;
         } catch(e){
+            console.error('[saveMultipleSettings] failed:', e);
             // Roll back local state so UI matches DB.
             for(const k in prev){ if(prev[k]===undefined) delete APP.settings[k]; else APP.settings[k]=prev[k]; }
             applySettings();
-            showToast('Save error: '+e.message,'error');
+            showToast(_fmtDbError(e, 'Save'), 'error');
+            return false;
         }
     }
     function applySettings() {
@@ -6538,7 +6629,26 @@
         else if(section==='hero'){ obj.hero_badge=document.getElementById('s_hero_badge').value.trim(); obj.hero_title=document.getElementById('s_hero_title').value.trim(); obj.hero_description=document.getElementById('s_hero_description').value.trim(); }
         else if(section==='stats'){ obj.stat_1_value=document.getElementById('s_stat_1_value').value.trim(); obj.stat_1_label=document.getElementById('s_stat_1_label').value.trim(); obj.stat_2_value=document.getElementById('s_stat_2_value').value.trim(); obj.stat_2_label=document.getElementById('s_stat_2_label').value.trim(); obj.stat_3_value=document.getElementById('s_stat_3_value').value.trim(); obj.stat_3_label=document.getElementById('s_stat_3_label').value.trim(); obj.stat_4_value=document.getElementById('s_stat_4_value').value.trim(); obj.stat_4_label=document.getElementById('s_stat_4_label').value.trim(); }
         else if(section==='courses_section'){ obj.courses_title=document.getElementById('s_courses_title').value.trim(); obj.courses_subtitle=document.getElementById('s_courses_subtitle').value.trim(); }
-        else if(section==='contact'){ obj.whatsapp_number=document.getElementById('s_whatsapp_number').value.trim(); obj.contact_email=document.getElementById('s_contact_email').value.trim(); obj.footer_description=document.getElementById('s_footer_description').value.trim(); }
+        else if(section==='contact'){
+            // v1.6.13 — Normalise the WhatsApp number to digits-only BEFORE save
+            // (strips spaces, '+', '(', ')', '-', etc.) so the DB always stores a
+            // clean wa.me-compatible value. Also basic validation: WhatsApp must
+            // be 10-15 digits (E.164 phone-number length), email must contain '@'.
+            const rawWa = document.getElementById('s_whatsapp_number').value;
+            const cleanWa = String(rawWa || '').replace(/\D/g, '');
+            if (cleanWa && (cleanWa.length < 10 || cleanWa.length > 15)) {
+                showToast('WhatsApp number should be 10-15 digits including country code (e.g. 919999999999).', 'warning');
+                return;
+            }
+            const rawEmail = document.getElementById('s_contact_email').value.trim();
+            if (rawEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+                showToast('Please enter a valid contact email address.', 'warning');
+                return;
+            }
+            obj.whatsapp_number = cleanWa;
+            obj.contact_email = rawEmail;
+            obj.footer_description = document.getElementById('s_footer_description').value.trim();
+        }
         saveMultipleSettings(obj);
     }
     function exportData() { const data={courses:APP.courses,users:APP.users.map(u=>({name:(u.first_name||'')+' '+(u.last_name||''),email:u.email,role:u.role,joined:u.created_at})),orders:APP.orders.map(o=>({id:o.order_number||o.id,customer:o.profiles?.full_name,course:o.courses?.title,amount:o.total_amount||o.amount,status:o.status,date:o.created_at})),enrollments:APP.enrollments.map(e=>({student:e.profiles?.full_name,course:e.courses?.title,status:e.status,date:e.enrolled_at}))}; const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='healthiq-export-'+new Date().toISOString().slice(0,10)+'.json'; a.click(); showToast('Data exported!'); }
