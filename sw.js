@@ -1,4 +1,67 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
+   v1.6.37 — Triple code-audit bug-fix pass (no user-facing regressions, all
+            three are latent bugs found during a deep code review).
+
+   BUG 1 — Mobile watermark blank when user name contains a non-breaking space.
+   ------------------------------------------------------------------------
+   v1.6.35 introduced a single-element SVG-background watermark on mobile
+   to fix the pinch-zoom OOM crash. The SVG content was built with the
+   existing Utils.escapeHtml() helper, which uses the BROWSER'S HTML
+   serializer (textContent setter → innerHTML getter). HTML serialization
+   emits `&nbsp;` for U+00A0 (non-breaking space) — perfectly valid HTML,
+   but `&nbsp;` is NOT a predefined XML entity. SVG parsers reject any
+   unknown entity as a fatal well-formedness error, so the data-URI
+   refused to render and mobile users whose names contained an nbsp
+   (very common when a name is pasted from Word, a PDF, or an
+   auto-formatted form) saw a BLANK watermark on mobile.
+
+   Fix: buildWatermarkGrid's mobile branch now uses a local xmlEscape()
+   that emits NUMERIC entities only (&#160; for U+00A0) plus strips
+   zero-width spaces / BOM characters that can also break XML parsing.
+   Desktop path unchanged.
+
+   BUG 2 — Frozen watermark timestamp on iPhone Plus / Pro Max landscape.
+   ------------------------------------------------------------------------
+   The 60-second watermark-refresh interval inside openSecureViewer
+   captured `_wmIntervalIsMobile = window.innerWidth < 700` ONCE at
+   viewer-open time and then used that captured value for every tick.
+
+   iPhone 14 Plus portrait is 428 px (mobile), landscape is 926 px
+   (desktop) — the threshold IS crossed by a simple rotation. After
+   rotating, the resize handler correctly rebuilds the watermark as a
+   desktop DOM grid… but the interval kept the stale "mobile" value
+   and skipped every subsequent rebuild. Result: desktop-style DOM
+   watermark with a frozen timestamp until the viewer was closed and
+   re-opened.
+
+   Fix: read `window.innerWidth < 700` INSIDE the interval callback so
+   the strategy follows the current viewport. Trivial change, was
+   genuinely missed in v1.6.35.
+
+   BUG 3 — Two stacked toasts on the 📧 Resend button.
+   ------------------------------------------------------------------------
+   v1.6.36's resendOrderEmail showed "Sending welcome email…" then
+   immediately stacked the result toast on top. Both were visible for a
+   few seconds, looking like the admin had double-clicked.
+
+   Fix: capture the loading toast element, programmatically click its
+   close button before showing the result. Uses the same dismiss path
+   the user would (slide-out animation, then DOM removal) so it looks
+   intentional, not glitchy.
+
+   FILES CHANGED
+   ------------------------------------------------------------------------
+   * index.html
+     - buildWatermarkGrid mobile branch: xmlEscape() helper
+     - openSecureViewer interval: re-evaluates threshold per tick
+     - resendOrderEmail: dismisses loading toast before result toast
+     - APP_VERSION 1.6.36 → 1.6.37
+   * sw.js
+     - VERSION hiq-v1.6.36 → hiq-v1.6.37 (forces refresh)
+
+   NO SQL changes. NO Edge Function changes.
+
+   === CARRIED FORWARD FROM v1.6.36 ===============================
    v1.6.36 — Welcome-email diagnostics + auto-retry + Resend button.
 
    USER REPORT
@@ -272,7 +335,7 @@
    * ALTER TABLE ADD COLUMN IF NOT EXISTS + NOTIFY pgrst reload.
    Carries forward from v1.6.25:
    * Realtime + 45s poll fallback + dual-admin RLS. */
-const VERSION = 'hiq-v1.6.36';
+const VERSION = 'hiq-v1.6.37';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

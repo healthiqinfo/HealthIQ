@@ -5898,7 +5898,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.36';
+    const APP_VERSION = '1.6.37';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -8911,7 +8911,10 @@
         const kind = isCompleted ? 'welcome' : 'decline';
 
         adminConfirm('Resend the <strong>' + kind + ' email</strong> to <strong>' + Utils.escapeHtml(userEmail) + '</strong>?', async () => {
-            showToast('Sending ' + kind + ' email…', 'info');
+            // v1.6.37 — Capture the loading toast so we can dismiss it
+            // before showing the result. Without this dismiss step the
+            // two toasts stack briefly and look like a bug to the admin.
+            const loadingToast = showToast('Sending ' + kind + ' email…', 'info', { duration: 60000 });
             const payload = {
                 type: isCompleted ? 'approved' : 'declined',
                 to: userEmail,
@@ -8923,6 +8926,16 @@
                 payload.reason = o.decline_reason || 'Payment could not be verified.';
             }
             const sent = await sendTransactionalEmail(payload);
+            // Best-effort dismiss of the loading toast — clicking the
+            // close button triggers the same dismiss path as the auto-
+            // timeout, including the 240 ms slide-out animation.
+            try {
+                if (loadingToast) {
+                    const closeBtn = loadingToast.querySelector('.toast-close');
+                    if (closeBtn) closeBtn.click();
+                    else if (loadingToast.parentNode) loadingToast.remove();
+                }
+            } catch (_) { /* toast already gone — fine */ }
             if (sent.ok) {
                 showToast(kind.charAt(0).toUpperCase() + kind.slice(1) + ' email re-sent to ' + userEmail + ' ✓', 'success');
             } else {
@@ -9490,16 +9503,41 @@
         // of RAM for it.
         const isMobile = window.innerWidth < 700;
         if(isMobile){
-            // SVG tile: 360×180px with one rotated text in the centre. The
-            // existing `text` is already HTML-escaped — that's valid XML too
-            // (&amp; is XML-safe), then encodeURIComponent makes it URL-safe
-            // for the data-URI. Single quotes inside attribute values are
-            // avoided by using only double quotes in the SVG markup.
+            // v1.6.37 — XML-safe escape for the SVG embed.
+            // Utils.escapeHtml uses the browser's HTML serializer which
+            // emits &nbsp; for U+00A0 (non-breaking space) — perfectly
+            // valid HTML but NOT a predefined XML entity. SVG parsers
+            // reject &nbsp; as a fatal well-formedness error, which
+            // killed the watermark for any user whose name contained
+            // an nbsp (common when a name was pasted from Word/PDF).
+            // We re-escape here using numeric entities only so EVERY
+            // character is XML-safe regardless of its Unicode block.
+            function xmlEscape(s){
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&apos;')
+                    // Force-numeric the non-breaking space + zero-width
+                    // chars commonly found in pasted names; everything
+                    // else is fine in UTF-8 SVG.
+                    .replace(/\u00A0/g, '&#160;')
+                    .replace(/\u200B/g, '')
+                    .replace(/\u200C/g, '')
+                    .replace(/\u200D/g, '')
+                    .replace(/\uFEFF/g, '');
+            }
+            const xmlText = xmlEscape(u.name) + ' \u2022 ' + xmlEscape(u.email) +
+                            ' \u2022 ' + xmlEscape(stamp) + ' \u2022 #' + xmlEscape(shortId);
+            // SVG tile: 360×180 px with one rotated text in the centre.
+            // Only double quotes are used inside attribute values so the
+            // single quotes in our xmlEscape output stay literal-safe.
             const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="360" height="180" viewBox="0 0 360 180">' +
                           '<g transform="rotate(-26 180 90)">' +
                             '<text x="50%" y="50%" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" ' +
                                   'fill="rgb(15,23,42)" text-anchor="middle" dominant-baseline="middle" letter-spacing="0.4">' +
-                                text +
+                                xmlText +
                             '</text>' +
                           '</g>' +
                         '</svg>';
@@ -9714,9 +9752,17 @@
         // set-once + scales for free); just keep the 60s progress bump.
         // Desktop: rebuild every 60s instead of 25s (cuts DOM churn 2.4×
         // with no visible difference — timestamp granularity stays at minute).
-        const _wmIntervalIsMobile = window.innerWidth < 700;
+        //
+        // v1.6.37 — Re-evaluate the mobile threshold INSIDE the interval
+        // callback. Previously we captured _wmIntervalIsMobile at viewer-
+        // open time and kept that value forever. iPhone Plus / Pro Max
+        // users who rotated portrait→landscape (428→926px, crossing the
+        // 700px threshold) flipped to desktop CSS but the interval still
+        // saw "mobile" and skipped the DOM rebuild → frozen watermark
+        // timestamp. Now we re-check each tick so the strategy follows
+        // the current viewport.
         Viewer.timer = setInterval(()=>{
-            if(!_wmIntervalIsMobile) buildWatermarkGrid();
+            if(window.innerWidth >= 700) buildWatermarkGrid();
             // Every 60s of viewing bumps progress +3% (cap 100) and logs a session ping
             if(Date.now()-Viewer.lastProgressBump > 60000){
                 Viewer.lastProgressBump = Date.now();
