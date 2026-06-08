@@ -1,4 +1,67 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
+   v1.6.36 — Welcome-email diagnostics + auto-retry + Resend button.
+
+   USER REPORT
+   -----------
+   "I approve from my laptop and it works fine. If I approve or decline
+    from my PC I get: 'Payment approved ✓ — course unlocked, but welcome
+    email failed: Edge Function returned a non-2xx status code'."
+
+   ROOT CAUSE — diagnostic blackout in sendTransactionalEmail().
+   ------------------------------------------------------------------------
+   supabase-js's FunctionsHttpError class wraps every non-2xx response
+   from an Edge Function and HARDCODES its `.message` property to the
+   useless string "Edge Function returned a non-2xx status code". The
+   ACTUAL server-side error (EAUTH 535, "Admin role required" with a
+   debug.hint SQL fix, ETIMEDOUT, ECONNECTION, etc.) lives on
+   `error.context` — a raw Response object the SDK never reads.
+
+   The old client code only looked at `error.message`, so every email
+   failure surfaced the same generic toast regardless of cause. Result:
+   the admin had no way to tell whether the PC's profile.role was wrong,
+   whether SMTP creds had rotated, whether it was a cold-start
+   timeout, or anything else. The reason WHY the laptop succeeded and
+   the PC didn't was effectively invisible.
+
+   FIXES
+   ------------------------------------------------------------------------
+   (A) sendTransactionalEmail now reads the real Response body via
+       `error.context.clone().json()` (with .text() fallback). The toast
+       now shows e.g.:
+         "HTTP 403 Admin role required — Your profile has role='student'.
+          Run the SQL fix to set it to 'admin'."
+         "HTTP 500 [EAUTH / SMTP 535] Invalid login: Username and
+          Password not accepted."
+         "HTTP 504 Gateway timeout (after 1 auto-retry)"
+       — actionable, copy-pasteable, no DevTools required.
+
+   (B) ONE silent auto-retry on transient errors (HTTP 5xx OR network
+       failure with no status). Wait 1.5 s, try again. Edge Function
+       cold starts (5–15 s) and Gmail SMTP socket flakes both succeed
+       on the second attempt. The admin only sees the final outcome.
+
+   (C) New 📧 Resend button on every COMPLETED and FAILED order in the
+       admin Orders table. Calls a new resendOrderEmail() that re-fires
+       JUST the welcome / decline email using data already on the order
+       row — does NOT touch the order, enrollment, or in-app
+       notification. Lets the admin recover from any one-off email
+       failure without re-approving (which would trip the enrollments
+       unique constraint).
+
+   FILES CHANGED
+   ------------------------------------------------------------------------
+   * index.html
+     - sendTransactionalEmail: extract real reason + auto-retry
+     - renderOrderRows: 📧 Resend button on completed + failed rows
+     - resendOrderEmail (NEW): admin-confirm + replay email
+     - APP_VERSION 1.6.35 → 1.6.36
+   * sw.js
+     - VERSION hiq-v1.6.35 → hiq-v1.6.36 (forces refresh)
+
+   NO SQL changes. NO Edge Function changes — the function already
+   returns a rich JSON error body; we just finally read it.
+
+   === CARRIED FORWARD FROM v1.6.35 ===============================
    v1.6.35 — Mobile zoom-crash fix + iOS Safari fullscreen fix.
 
    BUG A — "A problem repeatedly occurred on #courses" Chrome mobile crash.
@@ -209,7 +272,7 @@
    * ALTER TABLE ADD COLUMN IF NOT EXISTS + NOTIFY pgrst reload.
    Carries forward from v1.6.25:
    * Realtime + 45s poll fallback + dual-admin RLS. */
-const VERSION = 'hiq-v1.6.35';
+const VERSION = 'hiq-v1.6.36';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

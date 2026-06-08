@@ -5898,7 +5898,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.35';
+    const APP_VERSION = '1.6.36';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -7834,7 +7834,7 @@
         const totalRev=APP.orders.filter(o=>o.status==='completed').reduce((a,o)=>a+(o.total_amount||o.amount||0),0);
         document.getElementById('adminContent').innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;"><div><h2 style="font-size:1.4rem;font-weight:800;">Orders</h2><p style="font-size:0.85rem;color:var(--gray-600);">'+APP.orders.length+' total &middot; '+completed+' completed &middot; '+pending+' pending &middot; Revenue: '+Utils.formatCurrency(totalRev)+'</p></div><div style="display:flex;gap:0.75rem;align-items:center;"><input type="text" class="search-input" placeholder="Search orders..." oninput="filterAdminOrders(this.value)"><select class="search-input" style="width:auto;padding-left:0.8rem;background-image:none;" onchange="filterOrdersByStatus(this.value)"><option value="all">All</option><option value="completed">Completed</option><option value="pending">Pending</option><option value="failed">Failed</option></select></div></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th>Order ID</th><th>Customer</th><th>Course</th><th>Amount</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead><tbody id="adminOrdersBody">'+renderOrderRows(APP.orders)+'</tbody></table></div>';
     }
-    function renderOrderRows(list) { return list.length?list.map(o=>'<tr><td style="font-family:monospace;font-size:0.78rem;">'+Utils.escapeHtml(o.order_number||String(o.id).slice(0,8))+'</td><td>'+Utils.escapeHtml(o.profiles?.full_name||'')+'<div style="font-size:0.7rem;color:var(--gray-300);">'+Utils.escapeHtml(o.profiles?.email||'')+'</div></td><td>'+Utils.escapeHtml(o.courses?.title||'')+'</td><td><strong>'+Utils.formatCurrency(o.total_amount||o.amount||0)+'</strong></td><td style="font-size:0.82rem;">'+Utils.formatDate(o.created_at)+'</td><td><span class="status-badge status-'+(o.status==='completed'?'active':o.status==='pending'?'draft':'inactive')+'">'+Utils.escapeHtml(o.status)+'</span></td><td style="white-space:nowrap;">'+(o.status==='pending'?'<button class="btn btn-success btn-sm" onclick="approveOrder(\''+o.id+'\',\''+o.user_id+'\',\''+o.course_id+'\')" title="Approve">&#x2705; Approve</button> <button class="btn btn-danger btn-sm" onclick="rejectOrder(\''+o.id+'\')" title="Reject">&#x274C;</button>':'<span style="font-size:0.75rem;color:var(--gray-300);">'+(o.status==='completed'?'Approved':'Rejected')+'</span>')+'</td></tr>').join(''):'<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">&#x1F9FE;</div><h3>No orders yet</h3><p>Orders will appear here when students make purchases.</p></div></td></tr>'; }
+    function renderOrderRows(list) { return list.length?list.map(o=>'<tr><td style="font-family:monospace;font-size:0.78rem;">'+Utils.escapeHtml(o.order_number||String(o.id).slice(0,8))+'</td><td>'+Utils.escapeHtml(o.profiles?.full_name||'')+'<div style="font-size:0.7rem;color:var(--gray-300);">'+Utils.escapeHtml(o.profiles?.email||'')+'</div></td><td>'+Utils.escapeHtml(o.courses?.title||'')+'</td><td><strong>'+Utils.formatCurrency(o.total_amount||o.amount||0)+'</strong></td><td style="font-size:0.82rem;">'+Utils.formatDate(o.created_at)+'</td><td><span class="status-badge status-'+(o.status==='completed'?'active':o.status==='pending'?'draft':'inactive')+'">'+Utils.escapeHtml(o.status)+'</span></td><td style="white-space:nowrap;">'+(o.status==='pending'?'<button class="btn btn-success btn-sm" onclick="approveOrder(\''+o.id+'\',\''+o.user_id+'\',\''+o.course_id+'\')" title="Approve">&#x2705; Approve</button> <button class="btn btn-danger btn-sm" onclick="rejectOrder(\''+o.id+'\')" title="Reject">&#x274C;</button>':o.status==='completed'?'<span style="font-size:0.72rem;color:var(--gray-300);margin-right:0.4rem;">Approved</span><button class="btn btn-ghost btn-sm" onclick="resendOrderEmail(\''+o.id+'\')" title="Resend welcome email to user">&#x1F4E7; Resend</button>':o.status==='failed'?'<span style="font-size:0.72rem;color:var(--gray-300);margin-right:0.4rem;">Rejected</span><button class="btn btn-ghost btn-sm" onclick="resendOrderEmail(\''+o.id+'\')" title="Resend decline email to user">&#x1F4E7; Resend</button>':'<span style="font-size:0.75rem;color:var(--gray-300);">'+Utils.escapeHtml(o.status)+'</span>')+'</td></tr>').join(''):'<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">&#x1F9FE;</div><h3>No orders yet</h3><p>Orders will appear here when students make purchases.</p></div></td></tr>'; }
     function filterAdminOrders(q) { q=q.toLowerCase(); const filtered=APP.orders.filter(o=>((o.profiles?.full_name||'')+' '+(o.profiles?.email||'')+' '+(o.courses?.title||'')+' '+(o.order_number||o.id)).toLowerCase().includes(q)); document.getElementById('adminOrdersBody').innerHTML=renderOrderRows(filtered); }
     function filterOrdersByStatus(v) { const filtered=v==='all'?APP.orders:APP.orders.filter(o=>o.status===v); document.getElementById('adminOrdersBody').innerHTML=renderOrderRows(filtered); }
 
@@ -8871,6 +8871,65 @@
             }
         });
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // v1.6.36 — Resend transactional email for an already-processed order
+    // ─────────────────────────────────────────────────────────────────────
+    // Surfaces in the admin Orders table as a 📧 Resend button on both
+    // `completed` (resend welcome) and `failed` (resend decline) rows.
+    //
+    // WHY: Welcome/decline emails can fail at send time for transient
+    // reasons (cold-start, SMTP flake, Gmail rate-limit) or persistent
+    // ones (recipient mailbox full, deliverability fail). Re-running
+    // approveOrder() in those cases throws a unique-constraint
+    // violation on enrollments and confuses both admin and user. This
+    // button replays JUST the email — order state, enrollment, and
+    // in-app notification are left untouched.
+    //
+    // For declined orders we need `decline_reason`. If the order pre-
+    // dates v1.6.20 it won't have one — we fall back to a generic
+    // "Payment could not be verified" reason so the email template
+    // still renders cleanly.
+    // ─────────────────────────────────────────────────────────────────────
+    async function resendOrderEmail(orderId) {
+        const o = (APP.orders || []).find(x => String(x.id) === String(orderId));
+        if (!o) { showToast('Order not found — refresh and try again.', 'error'); return; }
+
+        const courseTitle = o.courses?.title || (APP.courses.find(c => c.id === o.course_id)?.title) || 'the course';
+        const userName    = o.profiles?.full_name || 'there';
+        const userEmail   = o.profiles?.email || '';
+        const amount      = o.total_amount || o.amount || 0;
+
+        if (!userEmail) { showToast('This user has no email on file — nothing to resend.', 'warning'); return; }
+
+        const isCompleted = o.status === 'completed';
+        const isFailed    = o.status === 'failed';
+        if (!isCompleted && !isFailed) {
+            showToast('Only completed or failed orders can have an email resent.', 'warning');
+            return;
+        }
+        const kind = isCompleted ? 'welcome' : 'decline';
+
+        adminConfirm('Resend the <strong>' + kind + ' email</strong> to <strong>' + Utils.escapeHtml(userEmail) + '</strong>?', async () => {
+            showToast('Sending ' + kind + ' email…', 'info');
+            const payload = {
+                type: isCompleted ? 'approved' : 'declined',
+                to: userEmail,
+                userName: userName,
+                courseTitle: courseTitle,
+                amount: amount
+            };
+            if (isFailed) {
+                payload.reason = o.decline_reason || 'Payment could not be verified.';
+            }
+            const sent = await sendTransactionalEmail(payload);
+            if (sent.ok) {
+                showToast(kind.charAt(0).toUpperCase() + kind.slice(1) + ' email re-sent to ' + userEmail + ' ✓', 'success');
+            } else {
+                showToast('Resend failed: ' + (sent.reason || 'unknown'), 'error');
+            }
+        });
+    }
     // ─────────────────────────────────────────────────────────────────────
     // v1.6.20 — Decline-with-reason flow
     // ─────────────────────────────────────────────────────────────────────
@@ -9054,8 +9113,27 @@
     // `send-decline-email` (name kept for backwards-compat with the
     // already-deployed function URL) with a `type` field that picks the
     // correct HTML template on the server. Returns { ok: true } on success,
-    // { ok: false, reason } on failure — we never throw because the DB
-    // mutation must persist even if email is broken.
+    // { ok: false, reason, status, code } on failure — we never throw
+    // because the DB mutation must persist even if email is broken.
+    //
+    // v1.6.36 — Two upgrades that fix the "works on laptop, fails on PC"
+    // diagnostic blackout reported in production:
+    //
+    //   (A) ERROR EXTRACTION. supabase-js's FunctionsHttpError wraps every
+    //       non-2xx response and hardcodes its `.message` to the useless
+    //       string "Edge Function returned a non-2xx status code". The
+    //       ACTUAL server-side error (EAUTH 535, "Admin role required"
+    //       + debug.hint, ETIMEDOUT, etc.) lives on `error.context` — a
+    //       raw Response object the SDK never reads. We now call
+    //       `error.context.json()` (or `.text()` fallback) so the admin
+    //       toast finally tells the truth.
+    //
+    //   (B) ONE AUTOMATIC RETRY on transient failures. Edge Function cold
+    //       starts can take 5–15 s; Gmail SMTP occasionally drops the
+    //       socket mid-handshake. These both surface as 5xx or network
+    //       errors and ALWAYS succeed on the second attempt. We wait
+    //       1.5 s and try once more before giving up. The retry is
+    //       silent — the admin only sees the final outcome.
     //
     // type:        'declined' | 'approved'
     // to:          recipient email address (required)
@@ -9069,31 +9147,84 @@
         if (type !== 'declined' && type !== 'approved') {
             return { ok: false, reason: "Invalid type '" + type + "' — must be 'declined' or 'approved'" };
         }
-        try {
-            const body = {
-                type: type,
-                to: to,
-                userName: userName || '',
-                courseTitle: courseTitle || '',
-                amount: Number(amount) || 0,
-                siteUrl: window.location.origin + window.location.pathname.replace(/\/index\.html$/i, '/')
-            };
-            if (type === 'declined') body.reason = reason || '';
-            const { data, error } = await db.functions.invoke('send-decline-email', { body });
-            if (error) {
-                // Common failure cases (in order of likelihood):
-                //  - Function not deployed yet → FunctionsHttpError 404
-                //  - Caller's session expired  → 401
-                //  - Caller isn't admin        → 403 (debug field has the details)
-                //  - SMTP creds missing        → 500 with helpful message
-                //  - Network / CORS issue      → FunctionsFetchError
-                return { ok: false, reason: error.message || 'Edge Function returned an error' };
+
+        const body = {
+            type: type,
+            to: to,
+            userName: userName || '',
+            courseTitle: courseTitle || '',
+            amount: Number(amount) || 0,
+            siteUrl: window.location.origin + window.location.pathname.replace(/\/index\.html$/i, '/')
+        };
+        if (type === 'declined') body.reason = reason || '';
+
+        // Single attempt — returns a normalised result. The outer code
+        // decides whether to retry based on the .transient flag.
+        async function attempt() {
+            try {
+                const { data, error } = await db.functions.invoke('send-decline-email', { body });
+                if (error) {
+                    // ── (A) Pull the REAL reason off the Response ────────
+                    // FunctionsHttpError exposes the raw Response on
+                    // `error.context`. The body is NOT consumed by the SDK
+                    // before this point, so .json()/.text() is safe.
+                    let serverReason = '';
+                    let serverDebug  = '';
+                    let httpStatus   = null;
+                    let serverCode   = null;
+                    const ctx = error.context;
+                    if (ctx && typeof ctx.status === 'number') httpStatus = ctx.status;
+                    if (ctx && typeof ctx.json === 'function') {
+                        try {
+                            const payload = await ctx.clone().json();
+                            if (payload) {
+                                if (typeof payload.error === 'string') serverReason = payload.error;
+                                if (payload.code)  serverCode  = String(payload.code);
+                                if (payload.debug) {
+                                    // The Edge Function attaches debug.hint
+                                    // on admin-role failures with a
+                                    // copy-pasteable SQL fix. Surface it.
+                                    if (payload.debug.hint) serverDebug = payload.debug.hint;
+                                    else serverDebug = JSON.stringify(payload.debug);
+                                }
+                            }
+                        } catch (_jsonErr) {
+                            // Body wasn't JSON — fall back to plain text.
+                            try {
+                                const txt = await ctx.clone().text();
+                                if (txt) serverReason = txt.slice(0, 300);
+                            } catch (_textErr) { /* give up — use generic */ }
+                        }
+                    }
+                    const composed = [
+                        httpStatus ? ('HTTP ' + httpStatus) : '',
+                        serverReason || error.message || 'Edge Function error',
+                        serverDebug ? ('— ' + serverDebug) : ''
+                    ].filter(Boolean).join(' ');
+                    // Transient if status is 5xx OR no status (network/CORS).
+                    const transient = (httpStatus === null) || (httpStatus >= 500 && httpStatus <= 599);
+                    return { ok: false, reason: composed, status: httpStatus, code: serverCode, transient: transient };
+                }
+                if (data && data.ok) return { ok: true };
+                return { ok: false, reason: (data && data.error) || 'Unexpected response shape from Edge Function', status: 200, transient: false };
+            } catch (e) {
+                // Pure network failure (DNS, TLS, CORS, offline). Always
+                // worth retrying once.
+                return { ok: false, reason: (e && e.message) || 'Network error calling Edge Function', status: null, transient: true };
             }
-            if (data && data.ok) return { ok: true };
-            return { ok: false, reason: (data && data.error) || 'Unexpected response shape from Edge Function' };
-        } catch (e) {
-            return { ok: false, reason: (e && e.message) || 'Network error calling Edge Function' };
         }
+
+        // ── (B) First try, then one retry on transient errors ─────────
+        let result = await attempt();
+        if (!result.ok && result.transient) {
+            console.warn('[email] transient failure, retrying in 1.5s:', result.reason);
+            await new Promise(function(r){ setTimeout(r, 1500); });
+            const second = await attempt();
+            if (second.ok) return second;
+            // Both attempts failed — annotate so the admin knows we tried.
+            return { ok: false, reason: second.reason + ' (after 1 auto-retry)', status: second.status, code: second.code };
+        }
+        return result;
     }
 
     // Build a clean, brand-aware mailto: link with a plain-text body the
