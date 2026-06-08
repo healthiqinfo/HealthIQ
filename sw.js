@@ -1,4 +1,22 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
+   v1.6.34 — Removed visible "View-Only" + "Watermarked" labels from
+   the secure viewer UI per user request.
+   * The two badges `👁 View-Only` and `💧 Watermarked` are removed from
+     the top bar. The `🔒 DRM` badge stays — single clean trust indicator.
+   * Loading splash sub-line "DRM · Watermark · View-only" → "End-to-end
+     protected" (no banned words).
+   * Secure-corner pill "Secure · watermarked" → "Secure session".
+   * CSS cleanup: removed orphan .pdf-badge.view-only + .pdf-badge.wm
+     rules; removed nth-child(2)/(3) entrance animations that no longer
+     have any badges to animate.
+   * Underlying SECURITY UNCHANGED: the per-user diagonal watermark
+     overlay (name • email • timestamp • #id) is still rendered every
+     25s. Drive's download chrome is still covered by all three
+     blockers. CSS @media print, oncopy/dragstart/contextmenu, all
+     keyboard guards, theme/brightness, milestones — all intact.
+   Pure index.html-only release (no SQL, no Edge Function, no migration changes).
+
+   === CARRIED FORWARD FROM v1.6.33 ===============================
    v1.6.33 — Removed the bottom-center "Live · Watermarked · Secure Session ·
    End-to-End Protected" info strip from the secure viewer per user request.
    The trust signal lives in the top bar (3 badges) and the bottom-left
@@ -127,7 +145,7 @@
    * ALTER TABLE ADD COLUMN IF NOT EXISTS + NOTIFY pgrst reload.
    Carries forward from v1.6.25:
    * Realtime + 45s poll fallback + dual-admin RLS. */
-const VERSION = 'hiq-v1.6.33';
+const VERSION = 'hiq-v1.6.34';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

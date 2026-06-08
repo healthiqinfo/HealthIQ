@@ -541,7 +541,9 @@
            ===== SECURE PDF VIEWER — ELITE EDITION (v1.6.31) ====================
            Premium reading experience layered on top of a hardened security shell.
            Highlights:
-             • Animated fade-in, gradient bar w/ badges (DRM / View-Only / Watermarked)
+             • Animated fade-in, gradient bar w/ DRM badge (v1.6.34 removed
+               View-Only + Watermarked badges per UX request — actual watermark
+               overlay + view-only iframe still active, just no visible labels)
              • Loading splash + shimmer progress bar (hides on iframe `load`)
              • Reading timer in header, focus-mode auto-dim of chrome (5.5s idle)
              • Wider pop-out blocker (160×62) + new bottom-right FAB blocker
@@ -573,8 +575,6 @@
             font-size: 0.62rem; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
             background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14); color: #e2e8f0; }
         .pdf-viewer-bar .pdf-badge.secure   { background: linear-gradient(135deg, rgba(16,185,129,0.18), rgba(59,130,246,0.18));  border-color: rgba(16,185,129,0.45); color: #6ee7b7; }
-        .pdf-viewer-bar .pdf-badge.view-only{ background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(99,102,241,0.18));  border-color: rgba(99,102,241,0.45); color: #a5b4fc; }
-        .pdf-viewer-bar .pdf-badge.wm       { background: linear-gradient(135deg, rgba(245,158,11,0.16), rgba(239,68,68,0.12));   border-color: rgba(245,158,11,0.35); color: #fcd34d; }
         .pdf-viewer-bar .pdf-bar-actions { display: flex; gap: 0.4rem; align-items: center; }
         .pdf-viewer-bar .pdf-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0;
             font-size: 0.95rem; line-height: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px;
@@ -723,8 +723,6 @@
         .pdf-viewer.active .pdf-viewer-bar-title-wrap { animation: pdfSlideDown 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
         .pdf-viewer.active .pdf-bar-actions            { animation: pdfSlideDown 0.55s 0.18s cubic-bezier(0.16, 1, 0.3, 1) both; }
         .pdf-viewer.active .pdf-badges .pdf-badge:nth-child(1) { animation: pdfFadeUp 0.5s 0.10s cubic-bezier(0.16, 1, 0.3, 1) both, pdfBadgeShimmer 4.5s ease-in-out infinite; }
-        .pdf-viewer.active .pdf-badges .pdf-badge:nth-child(2) { animation: pdfFadeUp 0.5s 0.18s cubic-bezier(0.16, 1, 0.3, 1) both, pdfBadgeShimmer 4.5s 0.6s ease-in-out infinite; }
-        .pdf-viewer.active .pdf-badges .pdf-badge:nth-child(3) { animation: pdfFadeUp 0.5s 0.26s cubic-bezier(0.16, 1, 0.3, 1) both, pdfBadgeShimmer 4.5s 1.2s ease-in-out infinite; }
 
         /* Premium button hover sweep — gradient swipes left-to-right on hover */
         .pdf-viewer-bar .pdf-icon-btn { position: relative; overflow: hidden; }
@@ -4103,8 +4101,6 @@
                     <span class="pdf-timer" id="pdfViewerTimer" title="Reading time" aria-label="Reading time">00:00</span>
                     <span class="pdf-badges" aria-hidden="true">
                         <span class="pdf-badge secure">&#x1F512; DRM</span>
-                        <span class="pdf-badge view-only">&#x1F441;&#xFE0F; View-Only</span>
-                        <span class="pdf-badge wm">&#x1F4A7; Watermarked</span>
                     </span>
                 </div>
             </div>
@@ -4129,7 +4125,7 @@
                     <div class="core">&#x1F6E1;&#xFE0F;</div>
                 </div>
                 <div class="pdf-loading-text">Securing your document&hellip;</div>
-                <div class="pdf-loading-sub">DRM &middot; Watermark &middot; View-only</div>
+                <div class="pdf-loading-sub">End-to-end protected</div>
             </div>
             <div class="pdf-watermark" id="pdfWatermark"><div class="pdf-watermark-tile" id="pdfWatermarkTile"></div></div>
             <div class="pdf-popout-blocker" title="Pop-out is disabled for protected content" onclick="showToast('Pop-out and external open are disabled for protected content','warning')">PROTECTED</div>
@@ -4154,7 +4150,7 @@
 
             <!-- Secure-corner: trust indicator + keyboard shortcut hints (desktop only) -->
             <div class="pdf-secure-corner" id="pdfSecureCorner">
-                <span class="pulse-dot" aria-hidden="true"></span>Secure &middot; watermarked
+                <span class="pulse-dot" aria-hidden="true"></span>Secure session
                 <span class="pdf-kbd-row" aria-hidden="true">
                     <kbd>Esc</kbd> close <span class="kbd-sep">&middot;</span>
                     <kbd>F</kbd> screen <span class="kbd-sep">&middot;</span>
@@ -5859,7 +5855,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.33';
+    const APP_VERSION = '1.6.34';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
