@@ -5532,7 +5532,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.29';
+    const APP_VERSION = '1.6.30';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -6442,15 +6442,80 @@
     // which will create a NEW pending order (the existing-order check in
     // submitPaymentForApproval looks only at status pending/completed/approved,
     // so a 'failed' row doesn't block re-purchase).
+    //
+    // v1.6.30 — Rewritten to actually work:
+    //   1. Refresh APP.myOrders FIRST so the now-failed order doesn't show
+    //      up as still-pending (the old version called enrollCourse which
+    //      hits the stale APP.myOrders cache and short-circuits with
+    //      "Payment already submitted, waiting for admin approval.").
+    //   2. If the course isn't in APP.courses (slow load, hidden, etc.),
+    //      fetch it directly from the DB so we still have a price to show.
+    //   3. Open showPaymentModal directly — bypasses enrollCourse's pending
+    //      check, which is the right behavior since the user has explicitly
+    //      asked to retry a failed payment.
+    //   4. Defensive logging at every step so the next "doesn't work" bug
+    //      is one DevTools panel away from being root-caused.
     async function retryDeclinedPayment(notificationId, courseId) {
-        await markNotificationRead(notificationId);
-        const c = (APP.courses || []).find(x => String(x.id) === String(courseId));
+        console.log('[retry] start', { notificationId, courseId });
+        if (!courseId) {
+            showToast('This notification has no course attached — open the catalogue instead.', 'warning');
+            return;
+        }
+        if (!APP.currentUser) {
+            openModal('login');
+            showToast('Please log in to retry the payment.', 'warning');
+            return;
+        }
+
+        // 1) Mark the notification as read in the background — don't await
+        //    because the QR modal should pop instantly. Failure here is
+        //    cosmetic (the banner will still show the row).
+        try { markNotificationRead(notificationId); } catch (e) { console.warn('[retry] markRead failed:', e); }
+
+        // 2) Refresh orders so the now-failed previous order is reflected
+        //    locally. If this fails (offline, RLS, etc.) we still try the
+        //    rest — showPaymentModal doesn't depend on APP.myOrders.
+        try {
+            if (typeof fetchOrders === 'function') await fetchOrders();
+        } catch (e) { console.warn('[retry] fetchOrders failed (continuing):', e); }
+
+        // 3) Resolve the course. Prefer the in-memory cache because it has
+        //    everything we need; fall back to a direct fetch by id.
+        let c = (APP.courses || []).find(x => String(x.id) === String(courseId));
+        if (!c && typeof db !== 'undefined' && db) {
+            try {
+                console.log('[retry] course not in APP.courses, fetching from DB…');
+                const { data, error } = await db.from('courses')
+                    .select('id, title, price, is_published')
+                    .eq('id', courseId)
+                    .maybeSingle();
+                if (error) throw error;
+                c = data;
+            } catch (e) { console.warn('[retry] db fetch failed:', e); }
+        }
         if (!c) {
             showToast('Course no longer available — browse our catalogue instead.', 'warning');
             return;
         }
-        toggleUserMenu(false);
-        if (typeof enrollCourse === 'function') {
+
+        // 4) Close the user menu if it's open (the modal goes on top, but
+        //    a stale dropdown behind it looks busy), then open the QR.
+        try {
+            const m = document.getElementById('userMenu');
+            if (m && m.classList.contains('active')) {
+                if (typeof toggleUserMenu === 'function') toggleUserMenu(false);
+                else m.classList.remove('active');
+            }
+        } catch (_) {}
+
+        // 5) Show the payment modal DIRECTLY rather than calling enrollCourse
+        //    so the "Payment already submitted" check (which only ever fires
+        //    on a stale local state) can't sabotage the retry.
+        console.log('[retry] opening payment modal for', c.id, c.title);
+        if (typeof showPaymentModal === 'function') {
+            showPaymentModal(c.id, c.title || 'Course', c.price || 0);
+        } else if (typeof enrollCourse === 'function') {
+            // Last-ditch fallback if something renamed showPaymentModal.
             enrollCourse(c.id, c.title || 'Course', c.price || 0);
         } else {
             location.hash = '#courses';
@@ -6461,6 +6526,14 @@
     // by updateAuthUI after a fresh fetch and again after every read/dismiss
     // action so counts stay live. Uses defensive lookups so a missing
     // dropdown (e.g. before DOMContentLoaded) is a no-op.
+    //
+    // v1.6.30 — Switched from inline `onclick="..."` to data-* attributes +
+    // an event-delegated handler on the banner host. The previous version
+    // embedded `n.id` (a UUID string per the actual schema) directly into
+    // the onclick attribute *unquoted*, producing JS like
+    //     onclick="markNotificationRead(abc-123-def)"
+    // which is a silent ReferenceError. Both Try Again and Dismiss looked
+    // dead. Event delegation avoids string-escaping entirely.
     function renderUserNotificationBanner() {
         const host = document.getElementById('userMenuNotifBanner');
         if (!host) return;
@@ -6491,8 +6564,8 @@
         host.style.display = 'block';
 
         // v1.6.29 — Render each card via the new .notif-item classes.
-        // Stagger via --i so cards cascade in. Surface course_title +
-        // amount + relative time when we have them.
+        // v1.6.30 — All actions use data-notif-id + data-notif-action so
+        // we don't have to inline-quote UUIDs and course IDs.
         const items = list.slice(0, 3).map((n, idx) => {
             const meta = n.metadata || {};
             const isDecline = n.type === 'payment_declined';
@@ -6504,6 +6577,8 @@
             const courseTitle = meta.course_title ? Utils.escapeHtml(meta.course_title) : '';
             const amount = (meta.amount != null) ? Utils.escapeHtml(Utils.formatCurrency(meta.amount)) : '';
             const ago    = Utils.escapeHtml(formatRelativeTime(n.created_at));
+            const nidAttr = ' data-notif-id="' + Utils.escapeHtml(String(n.id)) + '"';
+            const cidAttr = meta.course_id ? ' data-course-id="' + Utils.escapeHtml(String(meta.course_id)) + '"' : '';
 
             // Build the meta line — only show pieces we actually have so it
             // doesn't look like "· · ·" when metadata is empty.
@@ -6515,14 +6590,15 @@
                 ? '<div class="notif-item-meta">' + metaBits.join('<span class="meta-dot"></span>') + '</div>'
                 : '';
 
-            // Primary action depends on the notification type.
+            // Primary action depends on the notification type. All use
+            // data-notif-action so a single delegated handler can dispatch.
             let primaryBtn = '';
             if (isDecline && meta.course_id) {
-                primaryBtn = '<button class="notif-item-btn primary" type="button" onclick="retryDeclinedPayment(' + n.id + ',\'' + String(meta.course_id).replace(/'/g, "\\'") + '\')">Try Again</button>';
+                primaryBtn = '<button type="button" class="notif-item-btn primary" data-notif-action="retry"' + nidAttr + cidAttr + '>Try Again</button>';
             } else if (isApprove) {
-                primaryBtn = '<button class="notif-item-btn primary" type="button" onclick="document.getElementById(\'userMenu\')?.classList.remove(\'active\');markNotificationRead(' + n.id + ');showMyCourses()">Open</button>';
+                primaryBtn = '<button type="button" class="notif-item-btn primary" data-notif-action="open"' + nidAttr + '>Open</button>';
             }
-            const dismissBtn = '<button class="notif-item-btn ghost" type="button" onclick="markNotificationRead(' + n.id + ')">Dismiss</button>';
+            const dismissBtn = '<button type="button" class="notif-item-btn ghost" data-notif-action="dismiss"' + nidAttr + '>Dismiss</button>';
 
             return '<div class="notif-item ' + cls + '" style="--i:' + idx + ';">' +
                 '<span class="notif-item-icon" aria-hidden="true">' + icon + '</span>' +
@@ -6545,10 +6621,52 @@
                     '<span class="dot-count">' + totalUnread + '</span>' +
                     '<span>unread</span>' +
                 '</span>' +
-                '<button type="button" class="notif-banner-clear" onclick="markAllMyNotificationsRead()">Mark all read</button>' +
+                '<button type="button" class="notif-banner-clear" data-notif-action="mark-all">Mark all read</button>' +
             '</div>' +
             items + more +
         '</div>';
+
+        // v1.6.30 — Bind once per render. Replacing innerHTML wipes any
+        // previous listener so this is safe to call every refresh.
+        host.onclick = handleNotificationBannerClick;
+    }
+
+    // v1.6.30 — Single delegated click handler for every action button
+    // inside the user-menu notification banner. Reads data-notif-action
+    // + data-notif-id (+ data-course-id for retry) and dispatches. Using
+    // delegation means we never have to quote UUIDs into HTML strings —
+    // they live on data-* attributes that the browser preserves as-is.
+    function handleNotificationBannerClick(ev) {
+        const btn = ev.target.closest('[data-notif-action]');
+        if (!btn) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const action  = btn.dataset.notifAction;
+        const notifId = btn.dataset.notifId || '';
+        const courseId = btn.dataset.courseId || '';
+        if (action === 'mark-all') {
+            markAllMyNotificationsRead();
+            return;
+        }
+        if (action === 'dismiss') {
+            markNotificationRead(notifId);
+            return;
+        }
+        if (action === 'retry') {
+            // Don't auto-close the menu — retryDeclinedPayment opens the
+            // payment modal which will sit on top anyway, and closing the
+            // menu here would race with the modal opening.
+            retryDeclinedPayment(notifId, courseId);
+            return;
+        }
+        if (action === 'open') {
+            // Approved notification → mark read, close menu, jump to My Courses.
+            markNotificationRead(notifId);
+            const m = document.getElementById('userMenu');
+            if (m) m.classList.remove('active');
+            try { typeof showMyCourses === 'function' && showMyCourses(); } catch (_) {}
+            return;
+        }
     }
 
     async function saveCourseToDb(d) {
