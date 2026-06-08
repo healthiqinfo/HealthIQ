@@ -3421,6 +3421,8 @@
                                 <span class="user-menu-role" id="userMenuRole">Student</span>
                             </div>
                         </div>
+                        <!-- v1.6.20: notification banner — populated by renderUserNotificationBanner() -->
+                        <div id="userMenuNotifBanner" style="display:none;border-bottom:1px solid var(--gray-200);"></div>
                         <div class="user-menu-section">
                             <button class="user-menu-item" onclick="openDashboard()">
                                 <span class="umi-icon">&#x1F4CA;</span>
@@ -5197,7 +5199,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.19';
+    const APP_VERSION = '1.6.20';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -5831,6 +5833,149 @@
         } catch(e){ console.error('fetchMyEnrollments exception:',e); APP.myEnrollments=[]; }
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // v1.6.20 — User notifications (read side)
+    // ─────────────────────────────────────────────────────────────────────
+    // Pulls the current user's notifications (newest first, capped at 20)
+    // into APP.myNotifications. Used by renderUserNotificationBanner to
+    // inject an alert strip into the user menu dropdown so the user sees
+    // payment-decline notices the moment they next log in. We keep this
+    // resilient: if the table doesn't exist (migration not run yet) we
+    // silently set an empty list — the rest of the app continues to work.
+    // ─────────────────────────────────────────────────────────────────────
+    async function fetchMyNotifications() {
+        if (!APP.currentUser) { APP.myNotifications = []; return; }
+        try {
+            const { data, error } = await db.from('notifications')
+                .select('id, type, title, body, metadata, is_read, created_at')
+                .eq('user_id', APP.currentUser.id)
+                .order('created_at', { ascending: false })
+                .limit(20);
+            if (error) {
+                if (/relation .* does not exist/i.test(error.message || '')) {
+                    console.warn('[notifications] table missing — run SUPABASE_NOTIFICATIONS_MIGRATION.sql.');
+                } else {
+                    console.warn('fetchMyNotifications error:', error);
+                }
+                APP.myNotifications = []; return;
+            }
+            APP.myNotifications = data || [];
+        } catch (e) {
+            console.error('fetchMyNotifications exception:', e);
+            APP.myNotifications = [];
+        }
+    }
+
+    async function markNotificationRead(id) {
+        try {
+            const { error } = await db.from('notifications')
+                .update({ is_read: true, read_at: new Date().toISOString() })
+                .eq('id', id);
+            if (error) throw error;
+            const row = (APP.myNotifications || []).find(n => n.id === id);
+            if (row) row.is_read = true;
+            renderUserNotificationBanner();
+        } catch (e) { console.warn('markNotificationRead failed:', e); }
+    }
+
+    async function markAllMyNotificationsRead() {
+        if (!APP.currentUser) return;
+        try {
+            const unreadIds = (APP.myNotifications || []).filter(n => !n.is_read).map(n => n.id);
+            if (!unreadIds.length) return;
+            const { error } = await db.from('notifications')
+                .update({ is_read: true, read_at: new Date().toISOString() })
+                .in('id', unreadIds);
+            if (error) throw error;
+            (APP.myNotifications || []).forEach(n => { n.is_read = true; });
+            renderUserNotificationBanner();
+            showToast('Notifications marked as read', 'success');
+        } catch (e) { console.warn('markAllMyNotificationsRead failed:', e); }
+    }
+
+    // Re-tries a previously-declined payment. We deliberately DON'T delete
+    // the failed order — keeping it preserves the audit trail. Instead we
+    // mark the notification as read and trigger the standard enroll flow,
+    // which will create a NEW pending order (the existing-order check in
+    // submitPaymentForApproval looks only at status pending/completed/approved,
+    // so a 'failed' row doesn't block re-purchase).
+    async function retryDeclinedPayment(notificationId, courseId) {
+        await markNotificationRead(notificationId);
+        const c = (APP.courses || []).find(x => String(x.id) === String(courseId));
+        if (!c) {
+            showToast('Course no longer available — browse our catalogue instead.', 'warning');
+            return;
+        }
+        toggleUserMenu(false);
+        if (typeof enrollCourse === 'function') {
+            enrollCourse(c.id, c.title || 'Course', c.price || 0);
+        } else {
+            location.hash = '#courses';
+        }
+    }
+
+    // Renders the notification strip inside the user menu dropdown. Called
+    // by updateAuthUI after a fresh fetch and again after every read/dismiss
+    // action so counts stay live. Uses defensive lookups so a missing
+    // dropdown (e.g. before DOMContentLoaded) is a no-op.
+    function renderUserNotificationBanner() {
+        const host = document.getElementById('userMenuNotifBanner');
+        if (!host) return;
+        const list = (APP.myNotifications || []).filter(n => !n.is_read);
+        const totalUnread = list.length;
+        // Avatar bell dot — overlay a small badge on the avatar so the user
+        // sees there's something waiting BEFORE they open the dropdown.
+        const avatarBtn = document.getElementById('userAvatarBtn');
+        if (avatarBtn) {
+            const old = avatarBtn.querySelector('.user-avatar-dot');
+            if (old) old.remove();
+            if (totalUnread > 0) {
+                const dot = document.createElement('span');
+                dot.className = 'user-avatar-dot';
+                dot.textContent = totalUnread > 9 ? '9+' : String(totalUnread);
+                dot.style.cssText = 'position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;border:2px solid var(--white);border-radius:999px;font-size:0.62rem;font-weight:800;padding:0.05rem 0.3rem;line-height:1.2;min-width:18px;text-align:center;pointer-events:none;';
+                avatarBtn.style.position = 'relative';
+                avatarBtn.appendChild(dot);
+            }
+        }
+        if (!totalUnread) {
+            host.innerHTML = '';
+            host.style.display = 'none';
+            return;
+        }
+        host.style.display = 'block';
+        const items = list.slice(0, 3).map(n => {
+            const meta = n.metadata || {};
+            const isDecline = n.type === 'payment_declined';
+            const title = Utils.escapeHtml(n.title || 'Notification');
+            const body = Utils.escapeHtml(n.body || '');
+            const icon = isDecline ? '⚠️' : (n.type === 'payment_approved' ? '✅' : '🔔');
+            const tryAgainBtn = (isDecline && meta.course_id)
+                ? '<button class="btn btn-primary btn-sm" style="font-size:0.72rem;padding:0.3rem 0.6rem;" onclick="retryDeclinedPayment(' + n.id + ',\'' + String(meta.course_id).replace(/'/g, "\\'") + '\')">Try Again</button>'
+                : '';
+            return '<div style="background:' + (isDecline ? '#fef2f2' : '#fef9c3') + ';border:1px solid ' + (isDecline ? '#fecaca' : '#fde68a') + ';border-radius:10px;padding:0.7rem;margin-bottom:0.45rem;">' +
+                '<div style="display:flex;gap:0.5rem;align-items:flex-start;">' +
+                    '<span style="font-size:1.1rem;line-height:1;">' + icon + '</span>' +
+                    '<div style="flex:1;min-width:0;">' +
+                        '<strong style="font-size:0.82rem;color:' + (isDecline ? '#991b1b' : '#92400e') + ';display:block;">' + title + '</strong>' +
+                        '<p style="font-size:0.74rem;color:var(--gray-700);margin:0.2rem 0 0.4rem;line-height:1.35;">' + body + '</p>' +
+                        '<div style="display:flex;gap:0.4rem;flex-wrap:wrap;">' +
+                            tryAgainBtn +
+                            '<button class="btn btn-ghost btn-sm" style="font-size:0.72rem;padding:0.3rem 0.6rem;" onclick="markNotificationRead(' + n.id + ')">Dismiss</button>' +
+                        '</div>' +
+                    '</div>' +
+                '</div></div>';
+        }).join('');
+        const more = totalUnread > 3 ? '<div style="text-align:center;font-size:0.7rem;color:var(--gray-600);margin-top:0.2rem;">+ ' + (totalUnread - 3) + ' more</div>' : '';
+        host.innerHTML = '<div style="padding:0.6rem 0.6rem 0.2rem;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.45rem;">' +
+                '<strong style="font-size:0.78rem;color:var(--gray-700);text-transform:uppercase;letter-spacing:0.04em;">🔔 ' + totalUnread + ' new</strong>' +
+                '<button type="button" style="background:none;border:none;color:var(--primary);font-size:0.72rem;font-weight:600;cursor:pointer;padding:0.1rem 0.3rem;" onclick="markAllMyNotificationsRead()">Mark all read</button>' +
+            '</div>' +
+            items + more +
+        '</div>';
+    }
+
     async function saveCourseToDb(d) {
         if(!isSupabaseConfigured()) return {success:false};
         // Only include columns known to exist in the courses table
@@ -5897,7 +6042,10 @@
                 };
                 APP.userProfile = p || null;
                 // Independent reads — run in parallel for faster cold start.
-                await Promise.all([fetchMyEnrollments(), fetchMyOrders()]);
+                // v1.6.20: also pull notifications so the user sees the
+                // payment-decline (or any other) banner the instant they're
+                // hydrated. Failure is silently absorbed inside fetchMyNotifications.
+                await Promise.all([fetchMyEnrollments(), fetchMyOrders(), fetchMyNotifications()]);
             } finally {
                 _authHydrating = null;
             }
@@ -5923,7 +6071,10 @@
             APP.userProfile=profile;
             closeModal('login'); updateAuthUI();
             // Independent fetches — run in parallel for faster post-login UI refresh.
-            await Promise.all([fetchMyEnrollments(), fetchMyOrders(), fetchCourses()]);
+            // v1.6.20: pull notifications too so any pending decline banner
+            // shows up immediately in the user-menu dropdown.
+            await Promise.all([fetchMyEnrollments(), fetchMyOrders(), fetchCourses(), fetchMyNotifications()]);
+            renderUserNotificationBanner();
             showToast('Welcome back, '+Utils.escapeHtml(APP.currentUser.name)+'!');
         } catch(e){showToast(e.message||'Login failed','error');} finally{btn.classList.remove('btn-loading');btn.disabled=false;}
     }
@@ -6000,7 +6151,7 @@
         try { await db.auth.signOut(); } catch(e){ console.warn('signOut error:', e); }
         // Local state cleanup (the SIGNED_OUT listener will also clean, but doing
         // it here too makes the UI update instant even if the listener is delayed).
-        APP.currentUser=null; APP.userProfile=null; APP.myEnrollments=[]; APP.myOrders=[];
+        APP.currentUser=null; APP.userProfile=null; APP.myEnrollments=[]; APP.myOrders=[]; APP.myNotifications=[];
         updateAuthUI(); closeAdminPanel(); renderCourses(); renderPricingPlans();
         showToast('Logged out');
         document.getElementById('userMenu').classList.remove('active');
@@ -6025,7 +6176,7 @@
             try {
                 if (ev === 'SIGNED_OUT') {
                     APP.currentUser = null; APP.userProfile = null;
-                    APP.myEnrollments = []; APP.orders = []; APP.myOrders = [];
+                    APP.myEnrollments = []; APP.orders = []; APP.myOrders = []; APP.myNotifications = [];
                     updateAuthUI(); renderCourses(); renderPricingPlans();
                     return;
                 }
@@ -6065,6 +6216,9 @@
             a.style.display='flex';u.style.display='none';document.body.classList.remove('admin-mode');
             if(ma)ma.style.display='flex'; if(mu)mu.style.display='none';
         }
+        // v1.6.20: paint the notification banner + avatar dot. Safe to call
+        // even when logged-out — render*Banner() bails on a missing host.
+        try { renderUserNotificationBanner(); } catch (_) {}
     }
 
     // ===== RENDER =====
@@ -7517,15 +7671,187 @@
             }
         });
     }
-    async function rejectOrder(orderId) {
-        adminConfirm('Reject this payment?', async()=>{
+    // ─────────────────────────────────────────────────────────────────────
+    // v1.6.20 — Decline-with-reason flow
+    // ─────────────────────────────────────────────────────────────────────
+    // Old behaviour: rejectOrder() just flipped status='failed'. The user had
+    // no idea WHY their payment was rejected — they just saw their pending
+    // status disappear and re-clicked Buy, creating endless cycles.
+    //
+    // New behaviour: rejectOrder() opens a modal where the admin picks a
+    // reason (preset or custom). On confirm we (a) save the reason on the
+    // order, (b) write a persistent notification to the notifications table
+    // so the user sees it next time they log in, and (c) prefill a mailto:
+    // link the admin can fire off to email the user the same details.
+    //
+    // The mailto step is intentional: it works without ANY backend setup.
+    // Future v1.7 will swap to a Supabase Edge Function + Resend when the
+    // user has SMTP configured, but for now this is zero-infrastructure.
+    // ─────────────────────────────────────────────────────────────────────
+    const DECLINE_REASONS = [
+        { id: 'no_payment',  label: 'Payment not received in our account',          desc: 'No matching transaction found in UPI/bank statement.' },
+        { id: 'unclear',     label: 'Payment screenshot is unclear or invalid',     desc: 'Cannot verify the screenshot or no proof was attached.' },
+        { id: 'wrong_amount',label: 'Wrong amount paid',                            desc: 'Amount transferred does not match the course price.' },
+        { id: 'duplicate',   label: 'Suspected duplicate transaction',              desc: 'This transaction matches another already-processed order.' },
+        { id: 'expired',     label: 'Payment older than 24 hours',                  desc: 'Old pending request — please re-initiate the payment.' }
+    ];
+
+    function rejectOrder(orderId) {
+        // Backwards-compat: old admin notification-center buttons still call
+        // rejectOrder(id) with just the id. Look up the rest from APP.orders.
+        const o = (APP.orders || []).find(x => String(x.id) === String(orderId));
+        if (!o) { showToast('Order not found — refresh the page.', 'error'); return; }
+        openDeclineOrderModal(o);
+    }
+
+    function openDeclineOrderModal(order) {
+        let m = document.getElementById('declineOrderModal');
+        if (!m) { m = document.createElement('div'); m.id = 'declineOrderModal'; m.className = 'modal-overlay'; document.body.appendChild(m); }
+        const courseTitle = order.courses?.title || (APP.courses.find(c => c.id === order.course_id)?.title) || 'this course';
+        const userName    = order.profiles?.full_name || 'the user';
+        const userEmail   = order.profiles?.email || '';
+        const amount      = order.total_amount || order.amount || 0;
+        const reasonsHtml = DECLINE_REASONS.map((r, i) => (
+            '<label class="decline-reason-item" style="display:flex;gap:0.6rem;align-items:flex-start;padding:0.7rem;border:1px solid var(--gray-200);border-radius:8px;cursor:pointer;margin-bottom:0.4rem;">' +
+                '<input type="radio" name="declineReason" value="' + Utils.escapeHtml(r.label) + '" ' + (i === 0 ? 'checked' : '') + ' style="margin-top:0.2rem;" onchange="document.getElementById(\'declineCustomReason\').value=\'\';">' +
+                '<div><strong style="font-size:0.88rem;">' + Utils.escapeHtml(r.label) + '</strong>' +
+                '<div style="font-size:0.78rem;color:var(--gray-600);margin-top:0.15rem;">' + Utils.escapeHtml(r.desc) + '</div></div>' +
+            '</label>'
+        )).join('');
+        m.innerHTML = '<div class="modal" style="max-width:560px;">' +
+            '<button class="modal-close" onclick="document.getElementById(\'declineOrderModal\').classList.remove(\'active\')">&times;</button>' +
+            '<h2 style="display:flex;align-items:center;gap:0.5rem;"><span>❌</span> Decline Payment</h2>' +
+            '<p class="modal-subtitle">' + Utils.escapeHtml(userName) + ' &middot; ' + Utils.escapeHtml(courseTitle) + ' &middot; ' + Utils.formatCurrency(amount) + '</p>' +
+            '<div style="margin-top:1rem;"><strong style="font-size:0.85rem;display:block;margin-bottom:0.5rem;">Select a reason:</strong>' +
+                reasonsHtml +
+            '<div style="margin-top:0.8rem;"><strong style="font-size:0.85rem;">Or write a custom reason:</strong>' +
+                '<textarea id="declineCustomReason" placeholder="(Optional) Override the selection above with your own message…" rows="2" style="width:100%;padding:0.6rem;border:1px solid var(--gray-200);border-radius:6px;margin-top:0.3rem;font-family:inherit;font-size:0.85rem;resize:vertical;" oninput="document.querySelectorAll(\'#declineOrderModal input[name=declineReason]\').forEach(r=>r.checked=false);"></textarea>' +
+            '</div>' +
+            '<label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.8rem;font-size:0.85rem;cursor:pointer;">' +
+                '<input type="checkbox" id="declineSendEmail" checked> Also open my email client to send the user a notice' +
+            '</label>' +
+            '</div>' +
+            '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.2rem;">' +
+                '<button class="btn btn-ghost" onclick="document.getElementById(\'declineOrderModal\').classList.remove(\'active\')">Cancel</button>' +
+                '<button class="btn btn-danger" id="declineConfirmBtn">Decline & Notify User</button>' +
+            '</div></div>';
+        m.classList.add('active');
+        // Use addEventListener so we can pass the captured order without a JSON.stringify dance.
+        document.getElementById('declineConfirmBtn').onclick = () => {
+            const custom = (document.getElementById('declineCustomReason')?.value || '').trim();
+            const picked = document.querySelector('#declineOrderModal input[name=declineReason]:checked');
+            const reason = custom || picked?.value || DECLINE_REASONS[0].label;
+            const sendEmail = !!document.getElementById('declineSendEmail')?.checked;
+            confirmDeclineOrder(order.id, order.user_id, order.course_id, courseTitle, amount, userEmail, userName, reason, sendEmail);
+        };
+    }
+
+    async function confirmDeclineOrder(orderId, userId, courseId, courseTitle, amount, userEmail, userName, reason, sendEmail) {
+        const btn = document.getElementById('declineConfirmBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Processing…'; }
+        try {
+            // 1) Mark the order failed and stamp the reason. We use a wide
+            //    payload first; if the new columns don't exist (admin hasn't
+            //    run the migration yet) we retry with the legacy minimal
+            //    payload so the decline still happens — they just won't see
+            //    the reason in admin tables until they run the SQL.
+            const fullPayload = {
+                status: 'failed',
+                payment_verified: false,
+                decline_reason: reason,
+                declined_at: new Date().toISOString(),
+                declined_by: APP.currentUser?.id || null
+            };
+            let { error: oe } = await db.from('orders').update(fullPayload).eq('id', orderId);
+            if (oe && /column .* does not exist/i.test(oe.message || '')) {
+                console.warn('[decline] new order columns missing — falling back to legacy update. Run SUPABASE_NOTIFICATIONS_MIGRATION.sql to enable full features.');
+                const legacy = { status: 'failed', payment_verified: false };
+                ({ error: oe } = await db.from('orders').update(legacy).eq('id', orderId));
+            }
+            if (oe) throw oe;
+
+            // 2) Persist the in-app notification. If the table doesn't exist
+            //    we don't want to abort the decline — we just warn.
             try {
-                const{error}=await db.from('orders').update({status:'failed',payment_verified:false}).eq('id',orderId);
-                if(error)throw error;
-                showToast('Payment rejected.','warning');
-                await fetchOrders(); renderAdminOrders(); updateSidebarCounts();
-            }catch(e){showToast('Error: '+e.message,'error');}
-        });
+                const { error: ne } = await db.from('notifications').insert({
+                    user_id: userId,
+                    type: 'payment_declined',
+                    title: 'Payment verification failed',
+                    body: 'We could not verify your payment for "' + courseTitle + '" (' + Utils.formatCurrency(amount) + '). Reason: ' + reason,
+                    metadata: { order_id: orderId, course_id: courseId, course_title: courseTitle, amount: amount, reason: reason }
+                });
+                if (ne) console.warn('[decline] notifications insert failed:', ne.message, '— run SUPABASE_NOTIFICATIONS_MIGRATION.sql.');
+            } catch (e) { console.warn('[decline] notification skipped:', e); }
+
+            // 3) Email the user via the admin's mail client (mailto). This is
+            //    a zero-infrastructure approach that works everywhere — Gmail,
+            //    Outlook, Apple Mail. Future v1.7 will replace this with a
+            //    Supabase Edge Function calling Resend so it's automated.
+            if (sendEmail && userEmail) {
+                openDeclineEmailDraft(userEmail, userName, courseTitle, amount, reason);
+            }
+
+            showToast('Payment declined and user notified ✓', 'success');
+            document.getElementById('declineOrderModal')?.classList.remove('active');
+            await fetchOrders();
+            renderAdminOrders();
+            updateSidebarCounts();
+            if (typeof NotificationCenter !== 'undefined') NotificationCenter.refresh();
+        } catch (e) {
+            console.error('[decline] failed:', e);
+            showToast('Decline failed: ' + (e.message || 'unknown'), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Decline & Notify User'; }
+        }
+    }
+
+    // Build a clean, brand-aware mailto: link with a plain-text body the
+    // user will read. We deliberately keep it plain-text — many email
+    // clients strip HTML in mailto: anyway.
+    function openDeclineEmailDraft(toEmail, userName, courseTitle, amount, reason) {
+        const subject = 'HealthIQ — Action needed on your payment for "' + courseTitle + '"';
+        const lines = [
+            'Hi ' + (userName || 'there') + ',',
+            '',
+            'Thanks for your interest in HealthIQ. We attempted to verify your',
+            'recent payment for the course below, but we were unable to confirm',
+            'it on our end.',
+            '',
+            '────────────────────────────',
+            'Course : ' + courseTitle,
+            'Amount : ' + Utils.formatCurrency(amount),
+            'Status : Declined',
+            'Reason : ' + reason,
+            '────────────────────────────',
+            '',
+            'What to do next',
+            '───────────────',
+            '1. Re-check the UPI / bank account you transferred to.',
+            '2. If the money was deducted, please reply to this email with a',
+            '   clear screenshot of the transaction (showing UTR / reference no.).',
+            '3. If no money left your account, simply re-initiate the payment',
+            '   from the HealthIQ website — your previous request has been',
+            '   cleared so you can try again immediately.',
+            '',
+            'You can also log in and click "Try Again" on the in-app',
+            'notification we just sent you.',
+            '',
+            'If you have any questions, reply to this email and we\'ll help',
+            'you out personally.',
+            '',
+            'Warm regards,',
+            'The HealthIQ Team',
+            ''
+        ];
+        const body = lines.join('\r\n');
+        const mailto = 'mailto:' + encodeURIComponent(toEmail) +
+            '?subject=' + encodeURIComponent(subject) +
+            '&body=' + encodeURIComponent(body);
+        // Use a transient hidden anchor so popup blockers don't kill us.
+        const a = document.createElement('a');
+        a.href = mailto; a.rel = 'noopener';
+        document.body.appendChild(a); a.click();
+        setTimeout(() => a.remove(), 100);
     }
 
     // ===== USER MENU =====

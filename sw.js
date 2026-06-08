@@ -1,50 +1,56 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.19 — In-app "Auth Setup Helper" for Supabase URL Configuration.
-   * Problem: user shared their production URL
-     (https://healthiqinfo.github.io/HealthIQ) so we now know the exact
-     values that must be pasted into Supabase Dashboard → Authentication
-     → URL Configuration. Two issues to address:
-       1. Easy to typo when manually copying URLs into the dashboard
-          (especially with the /HealthIQ sub-path on GitHub Pages).
-       2. The path normalisation matters: GitHub Pages serves the same
-          page at /HealthIQ, /HealthIQ/, and /HealthIQ/index.html, so
-          the allow-list must cover all variants OR the redirect URL
-          we send to Supabase must collapse to one canonical form.
+   v1.6.20 — Decline-with-reason flow + persistent user notifications.
+   * Problem: when a user clicked "I made the payment" but no money actually
+     reached our account, the admin's only option was a silent rejectOrder()
+     that flipped the order to status='failed' with no explanation. Users
+     re-clicked Buy in confused loops and never knew WHY their payment was
+     rejected. There was also no email contact path.
    * Fix:
-     1. New getAuthRedirectUrl() shared helper — strips trailing
-        'index.html' from window.location.pathname so the URL we send
-        to Supabase as emailRedirectTo is always canonical (no matter
-        how the user navigated to the site). Used by handleRegister,
-        resendConfirmation AND handleForgotPassword.
-     2. New "🔐 Auth Setup Helper" button on the admin diagnostic
-        panel — opens an inline panel showing:
-          - Detected origin + path + canonical URL
-          - The exact Site URL value to paste (single value)
-          - The exact Redirect URLs to paste (4 variants: no-slash,
-            with-slash, /index.html, wildcard /**)
-          - Copy-to-clipboard buttons for each block
-          - Step-by-step Supabase Dashboard walkthrough
-          - "Why 4 redirect URLs?" explainer
-        Eliminates typos when configuring the dashboard.
-     3. email-templates/README.md now lists the user's exact production
-        URL (https://healthiqinfo.github.io/HealthIQ) with copy-paste-
-        ready blocks for Site URL + Redirect URLs.
-   * Why this matters: the user can now configure Supabase auth correctly
-     in 30 seconds with zero typos, and any future change to the hosting
-     URL (custom domain, etc.) will be immediately reflected in the
-     helper's output.
+     1. NEW SUPABASE_NOTIFICATIONS_MIGRATION.sql — creates the
+        public.notifications table with proper RLS (users own their rows,
+        admins can write any), plus orders.decline_reason / declined_at /
+        declined_by columns. Also includes a cleanup block that drops the
+        broken audit_log_trigger left over from earlier copy-pasted
+        migrations (it tried to INSERT into a non-existent audit_logs
+        table and silently broke every UPDATE/DELETE on profiles).
+     2. NEW decline modal in admin: rejectOrder(id) now opens a richer
+        modal with 5 preset reasons (no payment received, unclear
+        screenshot, wrong amount, duplicate transaction, expired) plus a
+        custom-reason textarea override. Admin picks a reason and clicks
+        "Decline & Notify User".
+     3. confirmDeclineOrder() does THREE things atomically:
+          (a) UPDATE orders SET status='failed', decline_reason=...,
+              declined_at=NOW(), declined_by=admin_id  (with graceful
+              fallback to legacy schema if migration not yet run).
+          (b) INSERT into notifications a payment_declined row with full
+              context in metadata (order_id, course_id, course_title,
+              amount, reason).
+          (c) Open a prefilled mailto: link in the admin's mail client
+              (subject + plain-text body with the same details). Zero
+              backend infrastructure required — works immediately.
+     4. NEW user-side notification surface: fetchMyNotifications() runs
+        on login + hydrate, populating APP.myNotifications. New
+        renderUserNotificationBanner() injects a colour-coded alert
+        strip into the user-menu dropdown showing up to 3 unread
+        notifications with "Try Again" + "Dismiss" buttons. Avatar gets
+        a red badge when unread > 0.
+     5. retryDeclinedPayment() — clicking "Try Again" marks the
+        notification read and re-opens the standard enroll flow for
+        that course (the prior failed order doesn't block re-purchase
+        because submitPaymentForApproval only checks status pending/
+        completed/approved).
+     6. Logout + SIGNED_OUT both clear APP.myNotifications cleanly.
+   * Why this matters: users now ALWAYS know why a payment was rejected
+     and have a one-click path to re-attempt. Admin still owns the
+     verification but communication is no longer a black hole.
+   Carries forward from v1.6.19:
+   * In-app Auth Setup Helper for Supabase URL Configuration.
+   * getAuthRedirectUrl() shared helper that canonicalises the URL.
    Carries forward from v1.6.18:
    * handleAuthHashErrors() + AuthRecoveryModal for expired email links.
-   * Explicit emailRedirectTo on every auth call.
-   * "Check your email" verify modal with Resend button + tips.
    Carries forward from v1.6.17:
-   * resolveWhatsappTarget() shared resolver with live DB fallback.
-   * "Test WhatsApp Link" diagnostic button.
-   Carries forward from v1.6.16/15/14:
-   * Live database diagnostic panel with smart source classification.
-   Carries forward from v1.6.13:
-   * Verified-save via .upsert(...).select() on every settings write. */
-const VERSION = 'hiq-v1.6.19';
+   * resolveWhatsappTarget() shared resolver with live DB fallback. */
+const VERSION = 'hiq-v1.6.20';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

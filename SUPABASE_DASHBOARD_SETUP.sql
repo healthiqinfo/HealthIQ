@@ -82,3 +82,60 @@ on conflict (key) do nothing;
 --                where id = auth.uid() and role = 'admin')
 --     );
 -- ============================================================
+
+
+-- ============================================================
+--  v1.6.20 — Decline-with-reason + Notifications
+--  See SUPABASE_NOTIFICATIONS_MIGRATION.sql for the canonical
+--  copy with full comments. This is a condensed inline copy
+--  so the main setup file is self-contained.
+-- ============================================================
+
+-- 5. orders: decline metadata
+alter table public.orders
+    add column if not exists decline_reason text,
+    add column if not exists declined_at    timestamptz,
+    add column if not exists declined_by    uuid references auth.users(id) on delete set null;
+
+-- 6. notifications table
+create table if not exists public.notifications (
+    id          bigserial primary key,
+    user_id     uuid references auth.users(id) on delete cascade,
+    type        text not null,
+    title       text not null,
+    body        text,
+    metadata    jsonb default '{}'::jsonb,
+    is_read     boolean default false,
+    created_at  timestamptz default now(),
+    read_at     timestamptz
+);
+create index if not exists idx_notifications_user_unread
+    on public.notifications (user_id, is_read, created_at desc);
+
+-- 7. RLS on notifications (users own theirs; admins can write any)
+alter table public.notifications enable row level security;
+drop policy if exists "users read own notifications"   on public.notifications;
+drop policy if exists "users update own notifications" on public.notifications;
+drop policy if exists "users insert own notifications" on public.notifications;
+drop policy if exists "admins insert any notification" on public.notifications;
+drop policy if exists "admins read all notifications"  on public.notifications;
+create policy "users read own notifications"   on public.notifications for select using (auth.uid() = user_id);
+create policy "users update own notifications" on public.notifications for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "users insert own notifications" on public.notifications for insert with check (auth.uid() = user_id);
+create policy "admins insert any notification" on public.notifications for insert with check (exists(select 1 from public.profiles where id = auth.uid() and role = 'admin'));
+create policy "admins read all notifications"  on public.notifications for select using (exists(select 1 from public.profiles where id = auth.uid() and role = 'admin'));
+
+-- 8. Cleanup of broken audit_log_trigger left over from copy-pasted migrations
+do $$
+declare r record;
+begin
+    for r in
+        select event_object_schema as schema_name, event_object_table as table_name, trigger_name
+        from information_schema.triggers
+        where action_statement ilike '%audit_log_trigger%'
+    loop
+        execute format('drop trigger if exists %I on %I.%I', r.trigger_name, r.schema_name, r.table_name);
+    end loop;
+    drop function if exists public.audit_log_trigger() cascade;
+end$$;
+-- ============================================================
