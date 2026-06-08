@@ -1,46 +1,58 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.24 — Polish: bulletproof approval email template.
-   * Problem: v1.6.23 fixed deliverability (denomailer → nodemailer)
-     and the decline email rendered beautifully, but the APPROVAL
-     email looked "junky" in many clients. Two root causes:
-       1. The CTA button used `linear-gradient(...)` for its
-          background. Outlook (and several mobile clients) ignore
-          CSS gradients completely → button rendered as bare text
-          floating in white space.
-       2. The button was wrapped in MSO conditional comments +
-          VML `<v:roundrect>` markup. Gmail's parser occasionally
-          leaks the raw `<!--[if mso]>` tags into the visible body,
-          which looks like garbled HTML to the recipient.
-     Net effect: a celebratory welcome email that looked broken.
+   v1.6.25 — Real-time in-app notifications for students.
+   * Problem: emails were landing perfectly (decline + approve), but
+     students never saw the in-app notification we were inserting
+     into the notifications table. Three layered root causes:
+       1. fetchMyNotifications() ran only on initial page load + on
+          login. A student already in the app when admin acted saw
+          NOTHING until they reloaded the tab — which they never do.
+       2. The notification UI lives inside the avatar dropdown.
+          Without a toast actively grabbing attention, the user
+          had no way to know something arrived.
+       3. The RLS policy "admins insert any notification" required
+          profiles.role='admin'. If the admin was authed via the
+          bootstrap-email fallback (no profile.role set), every
+          INSERT silently failed RLS — the row never existed and
+          there was nothing to render. The code only console.warn'd
+          this, never surfaced it to the admin.
    * Fix:
-     1. Rewrote `buildApproveHtml()` using the SAME bulletproof
-        rules as the decline template:
-          - Solid-color (#059669) brand ribbon + CTA, no gradients.
-          - 100% table-based layout (no flex/grid).
-          - Inline styles only, no `<style>` block.
-          - Removed every MSO conditional comment + VML element.
-          - Classic "bgcolor + nested table" button trick that
-            renders identically in Outlook, Gmail, Apple Mail,
-            Outlook.com, Yahoo, ProtonMail, and mobile clients.
-     2. Added genuinely useful content for the celebratory moment:
-          - 3-up "What's included" benefits grid (📝 notes ·
-            ♾️ lifetime · 📱 any device).
-          - Trust-badge row (🏅 Gold Medalist · 👥 100+ students
-            · 🔒 verified pay).
-          - Blue "Need help? Just reply" support strip.
-          - Copy-paste fallback URL under the CTA for clients
-            that suppress link clicking.
-     3. Plain-text fallback polished to match (benefits list,
-        30-second start guide, support line).
-   * Why this matters: a successful purchase deserves a welcome
-     email that looks as good as the product. Now both decline
-     and approve render identically polished across every major
-     email client — no more "junky" surprises.
-   Carries forward from v1.6.23:
-   * Nodemailer SMTP (handles Gmail's TLS quirk).
-   * SMTP error code surfaced in toasts (e.g. EAUTH/SMTP 535).
-   * Connection/greeting/socket timeouts (15s/10s/20s). */
-const VERSION = 'hiq-v1.6.24';
+     1. subscribeToMyNotifications() opens a Supabase Realtime
+        channel (postgres_changes INSERT filter scoped to the
+        user's own user_id). Sub-second push when the project has
+        Realtime enabled on the table.
+     2. 45-second polling fallback baked into the same function.
+        Runs only while document.visibilityState === 'visible',
+        diffs against existing IDs so the toast fires exactly
+        once per genuinely new row. Covers projects where
+        Realtime isn't enabled.
+     3. announceNotificationToast() — green confetti success for
+        payment_approved, amber warning for payment_declined,
+        blue info for everything else. Dedupe set caps unbounded
+        growth on long sessions.
+     4. Lifecycle hooks: subscribe on hydrateUserFromSession +
+        handleLogin; teardown on logout + SIGNED_OUT.
+     5. Admin-side INSERT failures now surface as warning toasts
+        instead of silent console.warn — so RLS/migration issues
+        are visible at the moment of the action.
+     6. SUPABASE_NOTIFICATIONS_MIGRATION.sql patched:
+          - RLS for admin INSERT + SELECT now uses the dual check
+            (profiles.role='admin' OR bootstrap email), mirroring
+            the client + Edge Function.
+          - ALTER PUBLICATION supabase_realtime ADD TABLE
+            public.notifications wrapped in an idempotent DO block.
+            Without this, Realtime delivers no events even when
+            the channel subscribes successfully.
+          - Verify block grew a 4th check for the publication row.
+   * Why this matters: students now see "🎉 Payment confirmed —
+     course unlocked!" appear as a toast the moment the admin
+     clicks Approve, with no reload required. Same for declines
+     ("⚠️ Payment declined — open your profile menu to see
+     details"). The notification bell on the avatar updates live.
+   Carries forward from v1.6.24:
+   * Bulletproof approval email template.
+   * Nodemailer SMTP (handles Gmail's TLS close quirk).
+   * SMTP error codes surfaced in toasts. */
+const VERSION = 'hiq-v1.6.25';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

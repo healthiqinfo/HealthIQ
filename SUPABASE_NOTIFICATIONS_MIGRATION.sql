@@ -1,8 +1,15 @@
 -- ============================================================
---  HealthIQ — v1.6.20 Migration: Decline-with-reason + Notifications
+--  HealthIQ — v1.6.20+ Migration: Decline-with-reason + Notifications
 --
 --  Run this ONCE in Supabase Dashboard → SQL Editor.
 --  Idempotent — safe to re-run if anything was partially applied.
+--
+--  v1.6.25 update: dual-admin RLS (mirrors client + Edge Function
+--  dual-check: profiles.role='admin' OR bootstrap email) and an
+--  ALTER PUBLICATION statement so Supabase Realtime delivers INSERT
+--  events for `notifications` without any dashboard clicks. If you
+--  already ran an older version of this migration, re-running it is
+--  safe — the DROP POLICY IF EXISTS clauses tidy up the old shape.
 -- ============================================================
 
 -- ------------------------------------------------------------
@@ -92,17 +99,54 @@ CREATE POLICY "users update own notifications" ON public.notifications
 CREATE POLICY "users insert own notifications" ON public.notifications
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+-- v1.6.25 — Admin INSERT/SELECT policies now use the SAME dual check
+-- the client + Edge Function already use:
+--   (a) profiles.role = 'admin', OR
+--   (b) JWT email matches the bootstrap admin (thehealthiqinfo@gmail.com).
+-- Without the bootstrap fallback, a fresh admin whose profiles row never
+-- got role='admin' set would silently fail every notifications INSERT —
+-- the user-side decline/approve email would still go out, but the
+-- in-app notification would never appear because the row never existed.
 CREATE POLICY "admins insert any notification" ON public.notifications
     FOR INSERT WITH CHECK (
         EXISTS (SELECT 1 FROM public.profiles
                 WHERE id = auth.uid() AND role = 'admin')
+        OR LOWER(COALESCE(auth.jwt() ->> 'email', '')) = 'thehealthiqinfo@gmail.com'
     );
 
 CREATE POLICY "admins read all notifications" ON public.notifications
     FOR SELECT USING (
         EXISTS (SELECT 1 FROM public.profiles
                 WHERE id = auth.uid() AND role = 'admin')
+        OR LOWER(COALESCE(auth.jwt() ->> 'email', '')) = 'thehealthiqinfo@gmail.com'
     );
+
+-- ------------------------------------------------------------
+-- 3b. v1.6.25 — Enable Supabase Realtime on `notifications`.
+--     Without this, the client's db.channel(...).on('postgres_changes')
+--     subscription will succeed but NEVER receive any INSERT events,
+--     because Postgres logical replication doesn't publish the table.
+--     The client has a 45-second polling fallback so notifications
+--     still appear eventually, but Realtime makes it sub-second.
+--
+--     Safe to re-run — DO block silently skips if the table is
+--     already in the publication.
+-- ------------------------------------------------------------
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime'
+          AND schemaname = 'public'
+          AND tablename = 'notifications'
+    ) THEN
+        EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications';
+        RAISE NOTICE 'Added public.notifications to supabase_realtime publication.';
+    ELSE
+        RAISE NOTICE 'public.notifications already in supabase_realtime publication — nothing to do.';
+    END IF;
+END
+$$;
 
 -- ------------------------------------------------------------
 -- 4. Verify everything landed
@@ -119,5 +163,11 @@ UNION ALL
 SELECT 'audit_log_trigger function gone',
        (SELECT 1 - COUNT(*) FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname='public' AND p.proname='audit_log_trigger');
--- All three rows should show exists_count = 1.
+        WHERE n.nspname='public' AND p.proname='audit_log_trigger')
+UNION ALL
+SELECT 'notifications in realtime publication',
+       (SELECT COUNT(*) FROM pg_publication_tables
+        WHERE pubname='supabase_realtime'
+          AND schemaname='public'
+          AND tablename='notifications');
+-- All FOUR rows should show exists_count = 1.

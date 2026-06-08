@@ -5199,7 +5199,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.24';
+    const APP_VERSION = '1.6.25';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -5893,6 +5893,127 @@
         } catch (e) { console.warn('markAllMyNotificationsRead failed:', e); }
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // v1.6.25 — Real-time notification delivery for students
+    // ─────────────────────────────────────────────────────────────────────
+    // PROBLEM: v1.6.20-1.6.24 fetched notifications only on page-load and
+    // login. If a student was already logged in when the admin approved
+    // or declined their order, they saw nothing until they reloaded the
+    // tab — which most students never do, so the feature looked broken
+    // from their perspective.
+    //
+    // SOLUTION: three complementary delivery channels for max reliability.
+    //   1. Supabase Realtime subscription (postgres_changes INSERT filter
+    //      scoped to the user's own user_id). Sub-second latency when the
+    //      project has Realtime enabled on the table.
+    //   2. 45-second polling fallback while the tab is visible (cheap; one
+    //      indexed query). Covers projects that haven't enabled Realtime
+    //      on `notifications` in dashboard → Database → Replication.
+    //   3. Toast announcement on every newly-arrived row so the student
+    //      sees it immediately, not just when they open the avatar menu.
+    //      Approval also fires a small confetti burst for the celebratory
+    //      moment.
+    //
+    // Both subscription + poll are torn down on logout / SIGNED_OUT so we
+    // don't leak listeners or hit the DB after the user leaves.
+    // ─────────────────────────────────────────────────────────────────────
+    let _notifChannel  = null;
+    let _notifPollTimer = null;
+    // Track IDs we've already toasted so realtime + poll can't double-fire.
+    const _notifToastedIds = new Set();
+
+    function announceNotificationToast(row) {
+        if (!row || !row.id) return;
+        if (_notifToastedIds.has(row.id)) return; // dedupe
+        _notifToastedIds.add(row.id);
+        // Cap the set so it can't grow unbounded over a long session.
+        if (_notifToastedIds.size > 200) {
+            const it = _notifToastedIds.values();
+            for (let i = 0; i < 50; i++) _notifToastedIds.delete(it.next().value);
+        }
+        const title = row.title || 'New notification';
+        if (row.type === 'payment_approved') {
+            showToast('🎉 ' + title, 'success');
+            if (typeof confettiBurst === 'function') {
+                try { confettiBurst({ count: 60 }); } catch (_) {}
+            }
+        } else if (row.type === 'payment_declined') {
+            showToast('⚠️ ' + title + ' — open your profile menu to see details', 'warning');
+        } else {
+            showToast('🔔 ' + title, 'info');
+        }
+    }
+
+    function subscribeToMyNotifications() {
+        if (!APP.currentUser || !isSupabaseConfigured()) return;
+        // Tear down any existing subscription first (handles fast re-login
+        // as a different user — channel name encodes the user id so the
+        // server-side filter is per-user, but we still want one channel).
+        teardownNotificationSubscription();
+
+        // (a) Realtime via postgres_changes — sub-second when enabled.
+        try {
+            _notifChannel = db
+                .channel('notif-user-' + APP.currentUser.id)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'notifications',
+                    filter: 'user_id=eq.' + APP.currentUser.id
+                }, (payload) => {
+                    const row = payload?.new;
+                    if (!row) return;
+                    console.log('[notif:realtime] new row:', row);
+                    // Splice into local state so the dropdown banner updates
+                    // without a round-trip.
+                    const existing = APP.myNotifications || [];
+                    if (!existing.find(n => n.id === row.id)) {
+                        APP.myNotifications = [row, ...existing].slice(0, 20);
+                    }
+                    try { renderUserNotificationBanner(); } catch (_) {}
+                    announceNotificationToast(row);
+                })
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('[notif:realtime] subscribed for user', APP.currentUser.id);
+                    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        // Don't surface to the user — the poll fallback covers this.
+                        console.warn('[notif:realtime] status:', status, '(poll fallback active)');
+                    }
+                });
+        } catch (e) {
+            console.warn('[notif:realtime] subscribe error:', e, '— poll fallback only');
+        }
+
+        // (b) Polling fallback. Only ticks while the tab is foregrounded
+        // (cheap + respectful of mobile data). Diff against existing IDs so
+        // we toast exactly once per newly-arrived row.
+        if (_notifPollTimer) clearInterval(_notifPollTimer);
+        _notifPollTimer = setInterval(async () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!APP.currentUser) return;
+            const beforeIds = new Set((APP.myNotifications || []).map(n => n.id));
+            await fetchMyNotifications();
+            try { renderUserNotificationBanner(); } catch (_) {}
+            (APP.myNotifications || []).forEach(n => {
+                if (!beforeIds.has(n.id) && !n.is_read) announceNotificationToast(n);
+            });
+        }, 45000);
+    }
+
+    function teardownNotificationSubscription() {
+        if (_notifChannel) {
+            try { db.removeChannel(_notifChannel); } catch (_) {}
+            _notifChannel = null;
+        }
+        if (_notifPollTimer) {
+            clearInterval(_notifPollTimer);
+            _notifPollTimer = null;
+        }
+        // Don't clear _notifToastedIds — keeps the dedupe set warm across
+        // brief disconnects (e.g. token refresh tears down + re-subscribes).
+    }
+
     // Re-tries a previously-declined payment. We deliberately DON'T delete
     // the failed order — keeping it preserves the audit trail. Instead we
     // mark the notification as read and trigger the standard enroll flow,
@@ -6046,6 +6167,11 @@
                 // payment-decline (or any other) banner the instant they're
                 // hydrated. Failure is silently absorbed inside fetchMyNotifications.
                 await Promise.all([fetchMyEnrollments(), fetchMyOrders(), fetchMyNotifications()]);
+                // v1.6.25 — open the Realtime channel + poll fallback so any
+                // notification inserted by an admin AFTER this point is
+                // pushed to the user within ~1s (Realtime) or ≤45s (poll),
+                // not just on the next page reload.
+                try { subscribeToMyNotifications(); } catch (e) { console.warn('[notif] subscribe failed:', e); }
             } finally {
                 _authHydrating = null;
             }
@@ -6075,6 +6201,9 @@
             // shows up immediately in the user-menu dropdown.
             await Promise.all([fetchMyEnrollments(), fetchMyOrders(), fetchCourses(), fetchMyNotifications()]);
             renderUserNotificationBanner();
+            // v1.6.25 — start Realtime + poll so notifications arrive live
+            // for the rest of this session without requiring a page reload.
+            try { subscribeToMyNotifications(); } catch (e) { console.warn('[notif] subscribe failed:', e); }
             showToast('Welcome back, '+Utils.escapeHtml(APP.currentUser.name)+'!');
         } catch(e){showToast(e.message||'Login failed','error');} finally{btn.classList.remove('btn-loading');btn.disabled=false;}
     }
@@ -6149,6 +6278,9 @@
     async function logout() {
         if(!isSupabaseConfigured())return;
         try { await db.auth.signOut(); } catch(e){ console.warn('signOut error:', e); }
+        // v1.6.25 — tear down the realtime/poll channel BEFORE clearing
+        // currentUser so the teardown can still reference the user id.
+        try { teardownNotificationSubscription(); } catch (_) {}
         // Local state cleanup (the SIGNED_OUT listener will also clean, but doing
         // it here too makes the UI update instant even if the listener is delayed).
         APP.currentUser=null; APP.userProfile=null; APP.myEnrollments=[]; APP.myOrders=[]; APP.myNotifications=[];
@@ -6175,6 +6307,10 @@
         db.auth.onAuthStateChange(async (ev, session) => {
             try {
                 if (ev === 'SIGNED_OUT') {
+                    // v1.6.25 — also tear down the notification subscription
+                    // on signed-out events fired by the SDK (token expiry,
+                    // server-side logout, multi-tab sync, etc.).
+                    try { teardownNotificationSubscription(); } catch (_) {}
                     APP.currentUser = null; APP.userProfile = null;
                     APP.myEnrollments = []; APP.orders = []; APP.myOrders = []; APP.myNotifications = [];
                     updateAuthUI(); renderCourses(); renderPricingPlans();
@@ -6565,7 +6701,10 @@
                             body: 'Your access to "' + courseTitle + '" is now active. Open My Courses to start learning.',
                             metadata: { order_id: o.id, course_id: o.course_id, course_title: courseTitle, amount: amount }
                         });
-                    } catch (_) { /* table may not exist — silent */ }
+                    } catch (e) {
+                        // v1.6.25 — capture for aggregate reporting after the loop.
+                        console.warn('[approveAll] notif insert failed for order', o.id, ':', e?.message);
+                    }
 
                     let emailOk = null; // null = no email sent (no address)
                     let emailReason = '';
@@ -7730,6 +7869,10 @@
                 // notification bell next time they open the app, even if
                 // the email lands in spam. We never let this block the
                 // approval — table missing? Just warn and move on.
+                // v1.6.25 — bubble the insert error as a warning toast so
+                // we KNOW when RLS/migration is the silent culprit (the
+                // old console.warn was invisible to non-DevTools admins).
+                let notifInsertError = '';
                 try {
                     const { error: ne } = await db.from('notifications').insert({
                         user_id: userId,
@@ -7738,8 +7881,17 @@
                         body: 'Your access to "' + courseTitle + '" is now active. Open My Courses to start learning.',
                         metadata: { order_id: orderId, course_id: courseId, course_title: courseTitle, amount: amount }
                     });
-                    if (ne) console.warn('[approve] notifications insert failed:', ne.message, '— run SUPABASE_NOTIFICATIONS_MIGRATION.sql.');
-                } catch (e) { console.warn('[approve] notification skipped:', e); }
+                    if (ne) {
+                        notifInsertError = ne.message || 'unknown';
+                        console.warn('[approve] notifications insert failed:', notifInsertError, '— run SUPABASE_NOTIFICATIONS_MIGRATION.sql.');
+                    }
+                } catch (e) {
+                    notifInsertError = e?.message || 'exception';
+                    console.warn('[approve] notification skipped:', e);
+                }
+                if (notifInsertError) {
+                    showToast('⚠ In-app notice could not be saved: ' + notifInsertError + ' — re-run SUPABASE_NOTIFICATIONS_MIGRATION.sql', 'warning');
+                }
 
                 // v1.6.22 — Branded approval email via the same Edge
                 // Function (`send-decline-email`, now type-aware). We
@@ -7885,6 +8037,10 @@
 
             // 2) Persist the in-app notification. If the table doesn't exist
             //    we don't want to abort the decline — we just warn.
+            // v1.6.25 — surface insert errors as a warning toast so the
+            // admin sees RLS / missing-table failures instead of having
+            // to open DevTools.
+            let notifInsertError = '';
             try {
                 const { error: ne } = await db.from('notifications').insert({
                     user_id: userId,
@@ -7893,8 +8049,17 @@
                     body: 'We could not verify your payment for "' + courseTitle + '" (' + Utils.formatCurrency(amount) + '). Reason: ' + reason,
                     metadata: { order_id: orderId, course_id: courseId, course_title: courseTitle, amount: amount, reason: reason }
                 });
-                if (ne) console.warn('[decline] notifications insert failed:', ne.message, '— run SUPABASE_NOTIFICATIONS_MIGRATION.sql.');
-            } catch (e) { console.warn('[decline] notification skipped:', e); }
+                if (ne) {
+                    notifInsertError = ne.message || 'unknown';
+                    console.warn('[decline] notifications insert failed:', notifInsertError, '— run SUPABASE_NOTIFICATIONS_MIGRATION.sql.');
+                }
+            } catch (e) {
+                notifInsertError = e?.message || 'exception';
+                console.warn('[decline] notification skipped:', e);
+            }
+            if (notifInsertError) {
+                showToast('⚠ In-app notice could not be saved: ' + notifInsertError + ' — re-run SUPABASE_NOTIFICATIONS_MIGRATION.sql', 'warning');
+            }
 
             // 3) Email the user. v1.6.22 — the email is ALWAYS sent via the
             //    Supabase Edge Function (Gmail SMTP, server-side, secret
