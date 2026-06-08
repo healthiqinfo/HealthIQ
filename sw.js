@@ -1,40 +1,63 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.28 — Migration hotfix #3: drop legacy CHECK constraints.
-   * Problem: after v1.6.27 cleared the legacy NOT NULL columns,
-     admins now hit a THIRD generation of the same problem:
-       "new row for relation 'notifications' violates check
-        constraint 'notifications_type_check'"
-     Their pre-existing notifications table ships with a CHECK
-     constraint that only allows a narrow legacy enum like
-       CHECK (type IN ('info','warning','success','error'))
-     which rejects our app's 'payment_approved' /
-     'payment_declined' values on every INSERT.
-   * Fix (SUPABASE_NOTIFICATIONS_MIGRATION.sql only — no JS change):
-     1. New section 2c: a DO block that enumerates every CHECK
-        constraint on public.notifications (pg_constraint.contype
-        = 'c') and drops them with ALTER TABLE ... DROP CONSTRAINT.
-        We deliberately do NOT touch FOREIGN KEY, UNIQUE, or
-        PRIMARY KEY constraints — only CHECK. RAISE NOTICE prints
-        each constraint name it dropped.
-     2. We do NOT re-add our own CHECK on `type`. The app already
-        validates type values client-side, and a DB-side enum has
-        bitten us twice now — every time we add a new notification
-        type (e.g. 'order_update', 'course_completed') someone
-        would have to re-migrate. The app is the source of truth
-        for which type values exist.
-     3. New section 5b: a diagnostic SELECT that lists any
-        remaining CHECK constraints on notifications with their
-        full definitions. After running the migration this should
-        return zero rows; if not, the output tells admin exactly
-        which legacy rule is still blocking INSERTs.
-   * Why this matters: v1.6.26 fixed MISSING columns. v1.6.27
-     fixed SURPLUS NOT NULL columns. v1.6.28 fixes SURPLUS CHECK
-     constraints. Together the migration now self-heals against
-     every form of legacy schema drift we've seen on
-     public.notifications.
+   v1.6.29 — Notification UI/UX polish. No schema or backend changes.
+   * Goal: now that the v1.6.22-v1.6.28 notification pipeline actually
+     works (Edge Function + Realtime + RLS + idempotent migration), the
+     visible surface deserved the same level of attention. The in-menu
+     banner was using a 60-line inline-styled template literal with
+     hardcoded hex colors that ignored dark mode entirely. The toast
+     was a plain one-liner with an emoji. The avatar dot was a static
+     red circle that just appeared. v1.6.29 modernises all of it.
+   * Changes (index.html only — no SQL / no Edge Function changes):
+     1. NEW CSS classes for the in-menu notification banner —
+        .notif-banner, .notif-banner-header, .notif-banner-title,
+        .notif-banner-clear, .notif-banner-more, .notif-item (+ three
+        modifiers .is-decline / .is-approve / .is-info), .notif-item-
+        icon / -body / -title / -text / -meta / -actions / -btn. All
+        colors come from CSS vars so light / dark / OLED themes all
+        just work. Each card has a stagger fade-in via --i so the
+        dropdown feels alive without being noisy. Animation respects
+        prefers-reduced-motion.
+     2. NEW .user-avatar-dot CSS class (was inline styles) with a
+        pop-in entrance and an opt-in .is-pulsing modifier that runs
+        a two-iteration box-shadow ring pulse for ~2.4s when a fresh
+        notification arrives. Pure CSS keyframes, no JS animation loop.
+     3. NEW showRichToast({ icon, title, body, meta, actions, duration })
+        helper that reuses the .toast chassis (so it inherits the
+        slide-in animation, dark-mode styling, dismiss button, and
+        progress bar) but adds an icon avatar, bold title, body line,
+        small meta line, and a row of inline action buttons. Used
+        from announceNotificationToast so the student now sees:
+          "Payment confirmed — course unlocked! \u{1F389}
+           Pharmacology — \u20B92,499 confirmed
+           just now
+           [Open My Courses] [Dismiss]"
+        instead of the old "\u{1F389} <title>" one-liner.
+     4. NEW formatRelativeTime(ts) — "just now" / "5m ago" / "3h ago"
+        / "yesterday" / "4d ago" / formatted date. Used by both the
+        banner and the rich toast.
+     5. NEW tab-title flash — when a notification arrives while the
+        tab is hidden (document.visibilityState === 'hidden'), we
+        prepend "\u{1F514} (N) " to the page title and alternate
+        every 1.2s until the tab regains focus, then restore the
+        original title on visibilitychange. Now the student notices
+        even if they switched to another tab while waiting for the
+        admin to approve.
+     6. announceNotificationToast now also pulses the avatar dot for
+        ~3s on every new notification so the eye is drawn there even
+        after the toast fades. Uses requestAnimationFrame + forced
+        layout flush to restart the CSS animation on repeat arrivals.
+   * Why this matters: the notification pipeline works perfectly
+     under the hood now; the UI just needed to communicate that
+     quality. The student gets a celebratory rich toast with confetti
+     on approval, a clear actionable toast with a "Try Again" button
+     on decline, a persistent visual cue (pulsing avatar dot + tab
+     title flash), and a polished themed notification banner inside
+     the avatar menu.
+   Carries forward from v1.6.28:
+   * Section 2c — drop legacy CHECK constraints generically.
    Carries forward from v1.6.27:
    * Section 2b — relax legacy NOT NULL columns.
-   * Section 5 — diagnostic shape listing.
+   * Section 5 / 5b — diagnostic queries.
    Carries forward from v1.6.26:
    * ALTER TABLE ADD COLUMN IF NOT EXISTS for every column.
    * NOTIFY pgrst 'reload schema' to refresh PostgREST cache.
@@ -42,7 +65,7 @@
    * Realtime + 45s poll fallback for student notifications.
    * Loud toasts on admin INSERT failures.
    * Dual-admin RLS on notifications. */
-const VERSION = 'hiq-v1.6.28';
+const VERSION = 'hiq-v1.6.29';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

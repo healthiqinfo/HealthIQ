@@ -2804,6 +2804,169 @@
         @keyframes toastProgress { to { transform: scaleX(0); } }
         @media (prefers-reduced-motion: reduce) { .toast-progress { animation: none; } }
 
+        /* ─────────────────────────────────────────────────────────────
+           v1.6.29 — Notification UI polish.
+           Replaces the inline-styled long template literal that used to
+           live inside renderUserNotificationBanner(). All colors come
+           from CSS vars so light / dark / OLED themes all just work.
+           The .notif-item entrance staggers via --i so the dropdown
+           feels alive without being noisy. The avatar dot gets a
+           tasteful double-pulse when a new notification arrives
+           (added by JS via the .is-pulsing modifier), then settles.
+           ───────────────────────────────────────────────────────────── */
+        .notif-banner { padding: 0.6rem 0.6rem 0.4rem; background: linear-gradient(180deg, rgba(15,111,236,0.025), transparent); }
+        .notif-banner-header { display: flex; justify-content: space-between; align-items: center; margin: 0.05rem 0.2rem 0.55rem; }
+        .notif-banner-title { font-size: 0.7rem; color: var(--gray-700); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; display: inline-flex; align-items: center; gap: 0.45rem; }
+        .notif-banner-title .dot-count { background: var(--danger); color: #fff; font-size: 0.62rem; font-weight: 800; padding: 0.06rem 0.42rem; border-radius: 999px; min-width: 18px; text-align: center; line-height: 1.3; box-shadow: 0 1px 3px rgba(220,38,38,0.35); }
+        .notif-banner-clear { background: none; border: none; color: var(--primary); font-size: 0.72rem; font-weight: 600; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 6px; transition: background 0.15s ease; }
+        .notif-banner-clear:hover { background: rgba(15,111,236,0.1); }
+        .notif-banner-more { text-align: center; font-size: 0.7rem; color: var(--gray-500); margin-top: 0.3rem; padding: 0.25rem; font-style: italic; }
+
+        .notif-item {
+            position: relative; padding: 0.7rem 0.75rem; margin-bottom: 0.45rem;
+            border-radius: 11px; background: var(--white); border: 1px solid var(--gray-100);
+            display: flex; gap: 0.7rem; align-items: flex-start;
+            opacity: 0; transform: translateY(-6px);
+            animation: notifSlideIn 0.36s cubic-bezier(0.2,0.9,0.3,1.2) forwards;
+            animation-delay: calc(var(--i, 0) * 70ms);
+            box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+        }
+        .notif-item:last-of-type { margin-bottom: 0.15rem; }
+        @keyframes notifSlideIn { to { opacity: 1; transform: translateY(0); } }
+
+        .notif-item.is-decline { background: linear-gradient(180deg, #fef2f2, #fef9f9); border-color: #fecaca; }
+        .notif-item.is-approve { background: linear-gradient(180deg, #f0fdf4, #f7fef9); border-color: #bbf7d0; }
+        .notif-item.is-info    { background: linear-gradient(180deg, #eff6ff, #f5f9ff); border-color: #bfdbfe; }
+
+        .notif-item-icon {
+            flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 1.05rem; color: #fff; line-height: 1;
+            box-shadow: 0 2px 6px -1px rgba(15,23,42,0.18);
+        }
+        .notif-item.is-decline .notif-item-icon { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 2px 6px -1px rgba(220,38,38,0.4); }
+        .notif-item.is-approve .notif-item-icon { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 2px 6px -1px rgba(16,185,129,0.4); }
+        .notif-item.is-info    .notif-item-icon { background: linear-gradient(135deg, #3b82f6, #2563eb); box-shadow: 0 2px 6px -1px rgba(59,130,246,0.4); }
+
+        .notif-item-body { flex: 1; min-width: 0; }
+        .notif-item-title { font-size: 0.83rem; font-weight: 700; color: var(--gray-900); line-height: 1.3; margin: 0 0 0.22rem; }
+        .notif-item.is-decline .notif-item-title { color: #991b1b; }
+        .notif-item.is-approve .notif-item-title { color: #065f46; }
+        .notif-item.is-info    .notif-item-title { color: #1e3a8a; }
+        .notif-item-text { font-size: 0.74rem; color: var(--gray-700); line-height: 1.45; margin: 0 0 0.4rem; word-wrap: break-word; }
+        .notif-item-meta { font-size: 0.68rem; color: var(--gray-500); margin-bottom: 0.45rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+        .notif-item-meta > span { white-space: nowrap; }
+        .notif-item-meta .meta-dot { width: 3px; height: 3px; background: currentColor; border-radius: 50%; opacity: 0.5; }
+        .notif-item-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+        .notif-item-btn {
+            font-size: 0.72rem; padding: 0.34rem 0.75rem;
+            border-radius: 7px; cursor: pointer;
+            font-weight: 600; line-height: 1.2;
+            border: 1px solid transparent;
+            transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        .notif-item-btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .notif-item-btn.primary:hover { background: #0a5dd0; box-shadow: 0 4px 10px -2px rgba(15,111,236,0.4); transform: translateY(-1px); }
+        .notif-item-btn.ghost { background: transparent; color: var(--gray-700); border-color: var(--gray-300); }
+        .notif-item-btn.ghost:hover { background: var(--gray-100); border-color: var(--gray-400); }
+
+        /* Dark mode — banner */
+        [data-theme="dark"] .notif-banner { background: linear-gradient(180deg, rgba(96,165,250,0.06), transparent); }
+        [data-theme="dark"] .notif-banner-title { color: #cbd5e1; }
+        [data-theme="dark"] .notif-banner-clear { color: #60a5fa; }
+        [data-theme="dark"] .notif-banner-clear:hover { background: rgba(96,165,250,0.12); }
+        [data-theme="dark"] .notif-banner-more { color: #94a3b8; }
+        [data-theme="dark"] .notif-item { background: #1f2937; border-color: rgba(255,255,255,0.06); box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+        [data-theme="dark"] .notif-item.is-decline { background: linear-gradient(180deg, rgba(127,29,29,0.28), rgba(127,29,29,0.16)); border-color: rgba(248,113,113,0.3); }
+        [data-theme="dark"] .notif-item.is-approve { background: linear-gradient(180deg, rgba(6,95,70,0.28), rgba(6,95,70,0.16)); border-color: rgba(52,211,153,0.3); }
+        [data-theme="dark"] .notif-item.is-info    { background: linear-gradient(180deg, rgba(30,64,175,0.28), rgba(30,64,175,0.16)); border-color: rgba(96,165,250,0.3); }
+        [data-theme="dark"] .notif-item-title { color: #f1f5f9; }
+        [data-theme="dark"] .notif-item.is-decline .notif-item-title { color: #fecaca; }
+        [data-theme="dark"] .notif-item.is-approve .notif-item-title { color: #a7f3d0; }
+        [data-theme="dark"] .notif-item.is-info    .notif-item-title { color: #bfdbfe; }
+        [data-theme="dark"] .notif-item-text { color: #cbd5e1; }
+        [data-theme="dark"] .notif-item-meta { color: #94a3b8; }
+        [data-theme="dark"] .notif-item-btn.ghost { color: #cbd5e1; border-color: rgba(255,255,255,0.15); }
+        [data-theme="dark"] .notif-item-btn.ghost:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.25); }
+
+        /* OLED — flatten the surface */
+        [data-theme="dark"][data-oled] .notif-item { background: #0a0e1a; border-color: rgba(255,255,255,0.05); }
+
+        @media (prefers-reduced-motion: reduce) {
+            .notif-item { animation: none; opacity: 1; transform: none; }
+        }
+
+        /* Avatar dot — promote to a real CSS class with a pop-in + optional pulse */
+        .user-avatar-dot {
+            position: absolute; top: -4px; right: -4px;
+            background: var(--danger); color: #fff;
+            border: 2px solid var(--white); border-radius: 999px;
+            font-size: 0.62rem; font-weight: 800;
+            padding: 0.05rem 0.32rem; line-height: 1.2;
+            min-width: 18px; text-align: center; pointer-events: none;
+            box-shadow: 0 2px 6px -1px rgba(220,38,38,0.45);
+            transform-origin: center;
+            animation: dotPop 0.32s cubic-bezier(0.34,1.56,0.64,1) both;
+            z-index: 2;
+        }
+        @keyframes dotPop { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        /* Added by JS for ~2.4s when a NEW notification arrives. */
+        .user-avatar-dot.is-pulsing {
+            animation:
+                dotPop 0.32s cubic-bezier(0.34,1.56,0.64,1) both,
+                dotPulse 1.2s ease-out 0.32s 2;
+        }
+        @keyframes dotPulse {
+            0%   { box-shadow: 0 2px 6px -1px rgba(220,38,38,0.45), 0 0 0 0   rgba(220,38,38,0.55); }
+            100% { box-shadow: 0 2px 6px -1px rgba(220,38,38,0.45), 0 0 0 16px rgba(220,38,38,0); }
+        }
+        [data-theme="dark"] .user-avatar-dot { border-color: #1a2233; }
+        [data-theme="dark"][data-oled] .user-avatar-dot { border-color: #000; }
+        @media (prefers-reduced-motion: reduce) {
+            .user-avatar-dot, .user-avatar-dot.is-pulsing { animation: none !important; }
+        }
+
+        /* Rich notification toast — reuses the .toast chassis (slide-in,
+           dark mode, progress bar) and adds an icon avatar, title, body,
+           meta line, and inline action buttons. */
+        .toast.toast-rich {
+            padding: 0.9rem 2.5rem 1.55rem 0.9rem;
+            min-width: 320px; max-width: 420px;
+            align-items: flex-start; gap: 0.75rem;
+        }
+        .toast.toast-rich .toast-rich-icon {
+            flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; color: #fff; line-height: 1;
+            box-shadow: 0 3px 8px -1px rgba(15,23,42,0.2);
+        }
+        .toast.toast-rich.success .toast-rich-icon { background: linear-gradient(135deg, #10b981, #059669); }
+        .toast.toast-rich.warning .toast-rich-icon { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .toast.toast-rich.info    .toast-rich-icon { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        .toast.toast-rich .toast-rich-content { flex: 1; min-width: 0; }
+        .toast.toast-rich .toast-rich-title { font-size: 0.9rem; font-weight: 700; color: var(--gray-900); line-height: 1.3; margin: 0 0 0.2rem; }
+        .toast.toast-rich .toast-rich-body { font-size: 0.78rem; color: var(--gray-700); line-height: 1.45; margin: 0 0 0.45rem; }
+        .toast.toast-rich .toast-rich-meta { font-size: 0.68rem; color: var(--gray-500); margin: 0 0 0.55rem; }
+        .toast.toast-rich .toast-rich-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+        .toast.toast-rich .toast-rich-btn {
+            font-size: 0.74rem; padding: 0.36rem 0.8rem;
+            border-radius: 7px; cursor: pointer; font-weight: 600;
+            border: 1px solid transparent; line-height: 1.2;
+            transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+        }
+        .toast.toast-rich .toast-rich-btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .toast.toast-rich .toast-rich-btn.primary:hover { background: #0a5dd0; box-shadow: 0 4px 10px -2px rgba(15,111,236,0.4); transform: translateY(-1px); }
+        .toast.toast-rich .toast-rich-btn.ghost { background: transparent; color: var(--gray-700); border-color: var(--gray-300); }
+        .toast.toast-rich .toast-rich-btn.ghost:hover { background: var(--gray-100); border-color: var(--gray-400); }
+        [data-theme="dark"] .toast.toast-rich .toast-rich-title { color: #f1f5f9; }
+        [data-theme="dark"] .toast.toast-rich .toast-rich-body  { color: #cbd5e1; }
+        [data-theme="dark"] .toast.toast-rich .toast-rich-meta  { color: #94a3b8; }
+        [data-theme="dark"] .toast.toast-rich .toast-rich-btn.ghost { color: #cbd5e1; border-color: rgba(255,255,255,0.18); }
+        [data-theme="dark"] .toast.toast-rich .toast-rich-btn.ghost:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.28); }
+        @media (max-width: 480px) {
+            .toast.toast-rich { min-width: 0; max-width: none; width: 100%; }
+        }
+
         /* 9) OLED true-black mode (opt-in via [data-theme="dark"][data-oled]) */
         [data-theme="dark"][data-oled] { --gray-50: #000000; --gray-100: #050507; --white: #000000; }
         [data-theme="dark"][data-oled] body { background: #000 !important; }
@@ -3920,6 +4083,176 @@
         setTimeout(dismiss, ttl);
         return t;
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // v1.6.29 — Rich notification toast.
+    // Reuses the .toast chassis so we inherit the slide-in animation,
+    // dark-mode styling, and progress bar for free. On top we add an
+    // icon avatar, bold title, body line, optional meta line, and a row
+    // of action buttons. Designed for notification announcements where
+    // a plain showToast() wouldn't carry enough context.
+    //
+    // opts: {
+    //   type:    'success' | 'warning' | 'info'   (default 'info')
+    //   icon:    string (emoji or text shown in the colored circle)
+    //   title:   string (bold first line — REQUIRED for it to read well)
+    //   body:    string (one-line description)
+    //   meta:    string (small grey line — relative time, amount, etc.)
+    //   actions: [{ label, onClick, variant: 'primary' | 'ghost' }]
+    //   duration: ms (default 8000 — longer than basic toasts because
+    //             rich toasts have buttons users may want to read)
+    // }
+    // ─────────────────────────────────────────────────────────────────────
+    function showRichToast(opts = {}) {
+        const c = document.getElementById('toastContainer'); if (!c) return;
+        const {
+            type = 'info',
+            icon = '\u{1F514}',
+            title = '',
+            body = '',
+            meta = '',
+            actions = [],
+            duration = 8000
+        } = opts;
+        const t = document.createElement('div');
+        t.className = 'toast toast-rich ' + type;
+
+        const ic = document.createElement('span');
+        ic.className = 'toast-rich-icon';
+        ic.setAttribute('aria-hidden', 'true');
+        ic.textContent = icon;
+        t.appendChild(ic);
+
+        const ct = document.createElement('div');
+        ct.className = 'toast-rich-content';
+        if (title) {
+            const ttl = document.createElement('div');
+            ttl.className = 'toast-rich-title';
+            ttl.textContent = title;
+            ct.appendChild(ttl);
+        }
+        if (body) {
+            const bd = document.createElement('div');
+            bd.className = 'toast-rich-body';
+            bd.textContent = body;
+            ct.appendChild(bd);
+        }
+        if (meta) {
+            const mt = document.createElement('div');
+            mt.className = 'toast-rich-meta';
+            mt.textContent = meta;
+            ct.appendChild(mt);
+        }
+        if (Array.isArray(actions) && actions.length) {
+            const wrap = document.createElement('div');
+            wrap.className = 'toast-rich-actions';
+            actions.forEach(a => {
+                if (!a || !a.label) return;
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'toast-rich-btn ' + (a.variant === 'primary' ? 'primary' : 'ghost');
+                btn.textContent = a.label;
+                btn.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    try { typeof a.onClick === 'function' && a.onClick(); }
+                    catch (e) { console.warn('[showRichToast] action error:', e); }
+                    dismiss();
+                });
+                wrap.appendChild(btn);
+            });
+            ct.appendChild(wrap);
+        }
+        t.appendChild(ct);
+
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'toast-close';
+        close.setAttribute('aria-label', 'Dismiss');
+        close.innerHTML = '&times;';
+        t.appendChild(close);
+
+        const prog = document.createElement('span');
+        prog.className = 'toast-progress';
+        prog.setAttribute('aria-hidden', 'true');
+        t.appendChild(prog);
+
+        let removed = false;
+        function dismiss() {
+            if (removed) return; removed = true;
+            t.classList.add('toast-leaving');
+            setTimeout(() => { if (t.parentNode) t.remove(); }, 240);
+        }
+        close.addEventListener('click', (e) => { e.stopPropagation(); dismiss(); });
+        // Click on the toast body (but not buttons) dismisses.
+        t.addEventListener('click', (e) => {
+            if (e.target.closest('.toast-rich-btn') || e.target.closest('.toast-close')) return;
+            dismiss();
+        });
+        c.appendChild(t);
+        prog.style.setProperty('--ttl', duration + 'ms');
+        setTimeout(dismiss, duration);
+        return t;
+    }
+
+    // v1.6.29 — Relative time formatter used by the notification banner
+    // and toasts. Returns "just now" / "5m ago" / "3h ago" / "yesterday"
+    // / "4d ago" / fully formatted date for anything older than a week.
+    function formatRelativeTime(ts) {
+        if (!ts) return '';
+        const t = (typeof ts === 'string' || typeof ts === 'number') ? new Date(ts) : ts;
+        if (!t || isNaN(t.getTime())) return '';
+        const diffMs = Date.now() - t.getTime();
+        if (diffMs < 0) return 'just now'; // future / clock drift — be friendly
+        const sec = Math.floor(diffMs / 1000);
+        if (sec < 30)   return 'just now';
+        if (sec < 60)   return sec + 's ago';
+        const min = Math.floor(sec / 60);
+        if (min < 60)   return min + 'm ago';
+        const hr  = Math.floor(min / 60);
+        if (hr  < 24)   return hr  + 'h ago';
+        const day = Math.floor(hr / 24);
+        if (day === 1)  return 'yesterday';
+        if (day < 7)    return day + 'd ago';
+        return t.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    }
+
+    // v1.6.29 — Tab title flash for backgrounded tabs.
+    // When a notification arrives while the user is on another tab we
+    // prepend "🔔 (N) " to the document title and flip between the two
+    // every 1.2s so they see the alert in the tab bar. As soon as the
+    // tab regains focus the original title is restored.
+    let _origTitle = null;
+    let _titleFlashTimer = null;
+    let _pendingNotifCount = 0;
+
+    function flashTabTitle() {
+        if (document.visibilityState === 'visible') return;
+        _pendingNotifCount += 1;
+        if (_origTitle == null) _origTitle = document.title;
+        if (_titleFlashTimer) return; // already flashing
+        let on = true;
+        _titleFlashTimer = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                resetTabTitle();
+                return;
+            }
+            document.title = on
+                ? '\u{1F514} (' + _pendingNotifCount + ') ' + _origTitle
+                : _origTitle;
+            on = !on;
+        }, 1200);
+    }
+
+    function resetTabTitle() {
+        if (_titleFlashTimer) { clearInterval(_titleFlashTimer); _titleFlashTimer = null; }
+        if (_origTitle != null) { document.title = _origTitle; _origTitle = null; }
+        _pendingNotifCount = 0;
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') resetTabTitle();
+    });
+
     function toggleDark() {
         // Legacy single-tap entry point — delegate to the new 3-way cycle
         // so anything still calling toggleDark() (keyboard shortcut, etc.)
@@ -5199,7 +5532,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.28';
+    const APP_VERSION = '1.6.29';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -5931,16 +6264,105 @@
             const it = _notifToastedIds.values();
             for (let i = 0; i < 50; i++) _notifToastedIds.delete(it.next().value);
         }
+
+        // v1.6.29 — Build a RICH toast: icon avatar, bold title, body
+        // showing the course + amount, and an action button that takes
+        // the student straight to the next step (Open / Try Again).
+        const meta = row.metadata || {};
         const title = row.title || 'New notification';
+        const courseTitle = meta.course_title ? String(meta.course_title) : '';
+        const amount = (meta.amount != null) ? Utils.formatCurrency(meta.amount) : '';
+        const reason = meta.reason ? String(meta.reason) : '';
+        const ago = formatRelativeTime(row.created_at || new Date());
+
+        // Compose a one-line body. Falls back to the row's stored body
+        // if we don't have rich metadata (e.g. type='info' notifications).
+        let body = '';
+        if (row.type === 'payment_approved' && courseTitle) {
+            body = courseTitle + (amount ? ' — ' + amount + ' confirmed' : '');
+        } else if (row.type === 'payment_declined' && courseTitle) {
+            body = courseTitle + (amount ? ' (' + amount + ')' : '') + (reason ? ' · ' + reason : '');
+        } else if (row.body) {
+            // Generic notification — show the stored body, but cap it so the
+            // toast doesn't grow unbounded.
+            body = row.body.length > 140 ? row.body.slice(0, 137) + '\u2026' : row.body;
+        }
+
+        // Pulse the avatar dot so the eye is drawn there even after the
+        // toast fades. We have to wait for renderUserNotificationBanner
+        // to (re)create the dot before adding the modifier — it runs
+        // synchronously from the realtime/poll handler that called us,
+        // so a single rAF tick is enough.
+        requestAnimationFrame(() => {
+            const dot = document.querySelector('.user-avatar-dot');
+            if (!dot) return;
+            // Restart the animation if it was already pulsing — flip the
+            // class and force a layout flush so the CSS engine re-runs it.
+            dot.classList.remove('is-pulsing');
+            void dot.offsetWidth;
+            dot.classList.add('is-pulsing');
+            // Clear after the animation so a manual menu open later doesn't
+            // re-trigger it (CSS keyframes only run once anyway, but this
+            // keeps the DOM tidy).
+            setTimeout(() => { try { dot.classList.remove('is-pulsing'); } catch (_) {} }, 3000);
+        });
+
+        // Flash the tab title if the user is on another tab right now —
+        // they wouldn't see a toast otherwise.
+        try { flashTabTitle(); } catch (_) {}
+
         if (row.type === 'payment_approved') {
-            showToast('🎉 ' + title, 'success');
+            showRichToast({
+                type: 'success',
+                icon: '\u{1F389}', // 🎉
+                title: title,
+                body: body || 'Your course is now unlocked.',
+                meta: ago,
+                actions: [
+                    { label: 'Open My Courses', variant: 'primary', onClick: () => {
+                        try { typeof showMyCourses === 'function' && showMyCourses(); } catch (_) {}
+                    }},
+                    { label: 'Dismiss', variant: 'ghost', onClick: () => {
+                        try { markNotificationRead(row.id); } catch (_) {}
+                    }}
+                ],
+                duration: 9000
+            });
             if (typeof confettiBurst === 'function') {
                 try { confettiBurst({ count: 60 }); } catch (_) {}
             }
         } else if (row.type === 'payment_declined') {
-            showToast('⚠️ ' + title + ' — open your profile menu to see details', 'warning');
+            const acts = [{
+                label: 'Dismiss', variant: 'ghost', onClick: () => {
+                    try { markNotificationRead(row.id); } catch (_) {}
+                }
+            }];
+            // Only offer "Try Again" if we have a course_id to retry against.
+            if (meta.course_id) {
+                acts.unshift({
+                    label: 'Try Again', variant: 'primary', onClick: () => {
+                        try { typeof retryDeclinedPayment === 'function' && retryDeclinedPayment(row.id, meta.course_id); } catch (_) {}
+                    }
+                });
+            }
+            showRichToast({
+                type: 'warning',
+                icon: '\u26A0\uFE0F', // ⚠️
+                title: title,
+                body: body || 'Open your profile menu for details.',
+                meta: ago,
+                actions: acts,
+                duration: 12000  // declines stay longer — they need action
+            });
         } else {
-            showToast('🔔 ' + title, 'info');
+            showRichToast({
+                type: 'info',
+                icon: '\u{1F514}', // 🔔
+                title: title,
+                body: body,
+                meta: ago,
+                duration: 7000
+            });
         }
     }
 
@@ -6044,8 +6466,10 @@
         if (!host) return;
         const list = (APP.myNotifications || []).filter(n => !n.is_read);
         const totalUnread = list.length;
-        // Avatar bell dot — overlay a small badge on the avatar so the user
-        // sees there's something waiting BEFORE they open the dropdown.
+
+        // Avatar dot — proper class, no inline styles. The pop-in animation
+        // is in CSS, and announceNotificationToast() adds .is-pulsing for a
+        // moment when a fresh notification arrives.
         const avatarBtn = document.getElementById('userAvatarBtn');
         if (avatarBtn) {
             const old = avatarBtn.querySelector('.user-avatar-dot');
@@ -6054,44 +6478,74 @@
                 const dot = document.createElement('span');
                 dot.className = 'user-avatar-dot';
                 dot.textContent = totalUnread > 9 ? '9+' : String(totalUnread);
-                dot.style.cssText = 'position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;border:2px solid var(--white);border-radius:999px;font-size:0.62rem;font-weight:800;padding:0.05rem 0.3rem;line-height:1.2;min-width:18px;text-align:center;pointer-events:none;';
                 avatarBtn.style.position = 'relative';
                 avatarBtn.appendChild(dot);
             }
         }
+
         if (!totalUnread) {
             host.innerHTML = '';
             host.style.display = 'none';
             return;
         }
         host.style.display = 'block';
-        const items = list.slice(0, 3).map(n => {
+
+        // v1.6.29 — Render each card via the new .notif-item classes.
+        // Stagger via --i so cards cascade in. Surface course_title +
+        // amount + relative time when we have them.
+        const items = list.slice(0, 3).map((n, idx) => {
             const meta = n.metadata || {};
             const isDecline = n.type === 'payment_declined';
+            const isApprove = n.type === 'payment_approved';
+            const cls = isDecline ? 'is-decline' : (isApprove ? 'is-approve' : 'is-info');
+            const icon = isDecline ? '\u26A0\uFE0F' : (isApprove ? '\u2713' : '\u{1F514}');
             const title = Utils.escapeHtml(n.title || 'Notification');
-            const body = Utils.escapeHtml(n.body || '');
-            const icon = isDecline ? '⚠️' : (n.type === 'payment_approved' ? '✅' : '🔔');
-            const tryAgainBtn = (isDecline && meta.course_id)
-                ? '<button class="btn btn-primary btn-sm" style="font-size:0.72rem;padding:0.3rem 0.6rem;" onclick="retryDeclinedPayment(' + n.id + ',\'' + String(meta.course_id).replace(/'/g, "\\'") + '\')">Try Again</button>'
+            const body  = Utils.escapeHtml(n.body || '');
+            const courseTitle = meta.course_title ? Utils.escapeHtml(meta.course_title) : '';
+            const amount = (meta.amount != null) ? Utils.escapeHtml(Utils.formatCurrency(meta.amount)) : '';
+            const ago    = Utils.escapeHtml(formatRelativeTime(n.created_at));
+
+            // Build the meta line — only show pieces we actually have so it
+            // doesn't look like "· · ·" when metadata is empty.
+            const metaBits = [];
+            if (courseTitle) metaBits.push('<span>\u{1F4D8} ' + courseTitle + '</span>');
+            if (amount)      metaBits.push('<span>\u{1F4B0} ' + amount + '</span>');
+            if (ago)         metaBits.push('<span>' + ago + '</span>');
+            const metaHTML = metaBits.length
+                ? '<div class="notif-item-meta">' + metaBits.join('<span class="meta-dot"></span>') + '</div>'
                 : '';
-            return '<div style="background:' + (isDecline ? '#fef2f2' : '#fef9c3') + ';border:1px solid ' + (isDecline ? '#fecaca' : '#fde68a') + ';border-radius:10px;padding:0.7rem;margin-bottom:0.45rem;">' +
-                '<div style="display:flex;gap:0.5rem;align-items:flex-start;">' +
-                    '<span style="font-size:1.1rem;line-height:1;">' + icon + '</span>' +
-                    '<div style="flex:1;min-width:0;">' +
-                        '<strong style="font-size:0.82rem;color:' + (isDecline ? '#991b1b' : '#92400e') + ';display:block;">' + title + '</strong>' +
-                        '<p style="font-size:0.74rem;color:var(--gray-700);margin:0.2rem 0 0.4rem;line-height:1.35;">' + body + '</p>' +
-                        '<div style="display:flex;gap:0.4rem;flex-wrap:wrap;">' +
-                            tryAgainBtn +
-                            '<button class="btn btn-ghost btn-sm" style="font-size:0.72rem;padding:0.3rem 0.6rem;" onclick="markNotificationRead(' + n.id + ')">Dismiss</button>' +
-                        '</div>' +
-                    '</div>' +
-                '</div></div>';
+
+            // Primary action depends on the notification type.
+            let primaryBtn = '';
+            if (isDecline && meta.course_id) {
+                primaryBtn = '<button class="notif-item-btn primary" type="button" onclick="retryDeclinedPayment(' + n.id + ',\'' + String(meta.course_id).replace(/'/g, "\\'") + '\')">Try Again</button>';
+            } else if (isApprove) {
+                primaryBtn = '<button class="notif-item-btn primary" type="button" onclick="document.getElementById(\'userMenu\')?.classList.remove(\'active\');markNotificationRead(' + n.id + ');showMyCourses()">Open</button>';
+            }
+            const dismissBtn = '<button class="notif-item-btn ghost" type="button" onclick="markNotificationRead(' + n.id + ')">Dismiss</button>';
+
+            return '<div class="notif-item ' + cls + '" style="--i:' + idx + ';">' +
+                '<span class="notif-item-icon" aria-hidden="true">' + icon + '</span>' +
+                '<div class="notif-item-body">' +
+                    '<div class="notif-item-title">' + title + '</div>' +
+                    (body ? '<div class="notif-item-text">' + body + '</div>' : '') +
+                    metaHTML +
+                    '<div class="notif-item-actions">' + primaryBtn + dismissBtn + '</div>' +
+                '</div>' +
+            '</div>';
         }).join('');
-        const more = totalUnread > 3 ? '<div style="text-align:center;font-size:0.7rem;color:var(--gray-600);margin-top:0.2rem;">+ ' + (totalUnread - 3) + ' more</div>' : '';
-        host.innerHTML = '<div style="padding:0.6rem 0.6rem 0.2rem;">' +
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.45rem;">' +
-                '<strong style="font-size:0.78rem;color:var(--gray-700);text-transform:uppercase;letter-spacing:0.04em;">🔔 ' + totalUnread + ' new</strong>' +
-                '<button type="button" style="background:none;border:none;color:var(--primary);font-size:0.72rem;font-weight:600;cursor:pointer;padding:0.1rem 0.3rem;" onclick="markAllMyNotificationsRead()">Mark all read</button>' +
+
+        const more = totalUnread > 3
+            ? '<div class="notif-banner-more">+ ' + (totalUnread - 3) + ' more in your dashboard</div>'
+            : '';
+
+        host.innerHTML = '<div class="notif-banner">' +
+            '<div class="notif-banner-header">' +
+                '<span class="notif-banner-title">' +
+                    '<span class="dot-count">' + totalUnread + '</span>' +
+                    '<span>unread</span>' +
+                '</span>' +
+                '<button type="button" class="notif-banner-clear" onclick="markAllMyNotificationsRead()">Mark all read</button>' +
             '</div>' +
             items + more +
         '</div>';
