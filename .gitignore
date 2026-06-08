@@ -1,0 +1,53 @@
+# ============================================================
+# HealthIQ — gitignore
+# Anything secret MUST be matched here. The app password used by
+# the send-decline-email Edge Function is NEVER stored in this
+# repo — it lives only in Supabase Edge Function Secrets (set
+# via `supabase secrets set ...` or the Dashboard UI).
+# ============================================================
+
+# ─── Secrets / environment ────────────────────────────────
+.env
+.env.*
+*.env
+.env.local
+.env.production
+.env.development
+.secrets/
+secrets.json
+*.secret
+*.key
+*.pem
+
+# Supabase CLI generated files
+supabase/.env
+supabase/.env.*
+supabase/.temp/
+supabase/.branches/
+supabase/seed.sql
+.supabase/
+
+# ─── Editor / OS clutter ──────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+
+# ─── Logs / build artifacts ───────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+node_modules/
+dist/
+build/
+.cache/
+
+# ─── Internal scratch files ───────────────────────────────
+_commit_msg.txt
+_scratch/
+TODO.local.md

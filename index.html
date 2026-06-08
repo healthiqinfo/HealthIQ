@@ -5199,7 +5199,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.20';
+    const APP_VERSION = '1.6.21';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -7783,12 +7783,33 @@
                 if (ne) console.warn('[decline] notifications insert failed:', ne.message, '— run SUPABASE_NOTIFICATIONS_MIGRATION.sql.');
             } catch (e) { console.warn('[decline] notification skipped:', e); }
 
-            // 3) Email the user via the admin's mail client (mailto). This is
-            //    a zero-infrastructure approach that works everywhere — Gmail,
-            //    Outlook, Apple Mail. Future v1.7 will replace this with a
-            //    Supabase Edge Function calling Resend so it's automated.
+            // 3) Email the user. v1.6.21 — preferred path is the
+            //    automated Supabase Edge Function (Gmail SMTP, server-side,
+            //    secret-encrypted). If the function isn't deployed yet OR
+            //    the call fails (network, CORS, missing secrets), we fall
+            //    back to opening the admin's mail client with a prefilled
+            //    draft so the decline still gets communicated. The user
+            //    sees a different toast for each path so they know whether
+            //    to manually click Send or not.
             if (sendEmail && userEmail) {
-                openDeclineEmailDraft(userEmail, userName, courseTitle, amount, reason);
+                const sent = await sendDeclineEmailAutomated({
+                    to: userEmail,
+                    userName: userName,
+                    courseTitle: courseTitle,
+                    amount: amount,
+                    reason: reason
+                });
+                if (!sent.ok) {
+                    console.warn('[decline] automated email failed, falling back to mailto draft:', sent.reason);
+                    openDeclineEmailDraft(userEmail, userName, courseTitle, amount, reason);
+                    showToast('Payment declined. Email automation unavailable — your mail client opened so you can send it manually.', 'warning');
+                    document.getElementById('declineOrderModal')?.classList.remove('active');
+                    await fetchOrders();
+                    renderAdminOrders();
+                    updateSidebarCounts();
+                    if (typeof NotificationCenter !== 'undefined') NotificationCenter.refresh();
+                    return;
+                }
             }
 
             showToast('Payment declined and user notified ✓', 'success');
@@ -7805,9 +7826,46 @@
         }
     }
 
+    // v1.6.21 — Automated decline email via Supabase Edge Function.
+    // Returns { ok: true } on success, { ok: false, reason } on any failure
+    // so the caller can decide whether to fall back to mailto:. We never
+    // throw — the decline must persist in the DB even if email is broken.
+    async function sendDeclineEmailAutomated({ to, userName, courseTitle, amount, reason }) {
+        if (!isSupabaseConfigured()) return { ok: false, reason: 'Supabase not configured' };
+        try {
+            const { data, error } = await db.functions.invoke('send-decline-email', {
+                body: {
+                    to: to,
+                    userName: userName || '',
+                    courseTitle: courseTitle || '',
+                    amount: Number(amount) || 0,
+                    reason: reason || '',
+                    siteUrl: window.location.origin + window.location.pathname.replace(/\/index\.html$/i, '/')
+                }
+            });
+            if (error) {
+                // Common cases:
+                //  - Function not deployed yet → 404 / FunctionsHttpError
+                //  - Caller isn't admin       → 403 (shouldn't happen — we
+                //    only show the modal to admins, but defensive)
+                //  - SMTP creds missing       → 500 with helpful message
+                return { ok: false, reason: error.message || 'Edge Function returned an error' };
+            }
+            if (data && data.ok) return { ok: true };
+            return { ok: false, reason: (data && data.error) || 'Unexpected response shape from Edge Function' };
+        } catch (e) {
+            return { ok: false, reason: (e && e.message) || 'Network error calling Edge Function' };
+        }
+    }
+
     // Build a clean, brand-aware mailto: link with a plain-text body the
     // user will read. We deliberately keep it plain-text — many email
     // clients strip HTML in mailto: anyway.
+    //
+    // v1.6.21: now used as a FALLBACK when sendDeclineEmailAutomated()
+    // fails. Primary path is the Supabase Edge Function (server-side
+    // Gmail SMTP). This keeps the admin unblocked even if the function
+    // isn't deployed or secrets aren't set yet.
     function openDeclineEmailDraft(toEmail, userName, courseTitle, amount, reason) {
         const subject = 'HealthIQ — Action needed on your payment for "' + courseTitle + '"';
         const lines = [

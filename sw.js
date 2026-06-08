@@ -1,56 +1,38 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.20 — Decline-with-reason flow + persistent user notifications.
-   * Problem: when a user clicked "I made the payment" but no money actually
-     reached our account, the admin's only option was a silent rejectOrder()
-     that flipped the order to status='failed' with no explanation. Users
-     re-clicked Buy in confused loops and never knew WHY their payment was
-     rejected. There was also no email contact path.
+   v1.6.21 — Automated decline-email delivery via Supabase Edge Function.
+   * Problem: v1.6.20 shipped a decline-with-reason flow but the email
+     step was a mailto: link — admin had to manually click Send in
+     their mail client every time. User asked for full automation.
    * Fix:
-     1. NEW SUPABASE_NOTIFICATIONS_MIGRATION.sql — creates the
-        public.notifications table with proper RLS (users own their rows,
-        admins can write any), plus orders.decline_reason / declined_at /
-        declined_by columns. Also includes a cleanup block that drops the
-        broken audit_log_trigger left over from earlier copy-pasted
-        migrations (it tried to INSERT into a non-existent audit_logs
-        table and silently broke every UPDATE/DELETE on profiles).
-     2. NEW decline modal in admin: rejectOrder(id) now opens a richer
-        modal with 5 preset reasons (no payment received, unclear
-        screenshot, wrong amount, duplicate transaction, expired) plus a
-        custom-reason textarea override. Admin picks a reason and clicks
-        "Decline & Notify User".
-     3. confirmDeclineOrder() does THREE things atomically:
-          (a) UPDATE orders SET status='failed', decline_reason=...,
-              declined_at=NOW(), declined_by=admin_id  (with graceful
-              fallback to legacy schema if migration not yet run).
-          (b) INSERT into notifications a payment_declined row with full
-              context in metadata (order_id, course_id, course_title,
-              amount, reason).
-          (c) Open a prefilled mailto: link in the admin's mail client
-              (subject + plain-text body with the same details). Zero
-              backend infrastructure required — works immediately.
-     4. NEW user-side notification surface: fetchMyNotifications() runs
-        on login + hydrate, populating APP.myNotifications. New
-        renderUserNotificationBanner() injects a colour-coded alert
-        strip into the user-menu dropdown showing up to 3 unread
-        notifications with "Try Again" + "Dismiss" buttons. Avatar gets
-        a red badge when unread > 0.
-     5. retryDeclinedPayment() — clicking "Try Again" marks the
-        notification read and re-opens the standard enroll flow for
-        that course (the prior failed order doesn't block re-purchase
-        because submitPaymentForApproval only checks status pending/
-        completed/approved).
-     6. Logout + SIGNED_OUT both clear APP.myNotifications cleanly.
-   * Why this matters: users now ALWAYS know why a payment was rejected
-     and have a one-click path to re-attempt. Admin still owns the
-     verification but communication is no longer a black hole.
-   Carries forward from v1.6.19:
-   * In-app Auth Setup Helper for Supabase URL Configuration.
-   * getAuthRedirectUrl() shared helper that canonicalises the URL.
-   Carries forward from v1.6.18:
-   * handleAuthHashErrors() + AuthRecoveryModal for expired email links.
-   Carries forward from v1.6.17:
-   * resolveWhatsappTarget() shared resolver with live DB fallback. */
-const VERSION = 'hiq-v1.6.20';
+     1. NEW Supabase Edge Function `send-decline-email`
+        (supabase/functions/send-decline-email/index.ts) running on
+        Deno. Verifies the caller's JWT is an admin, reads
+        GMAIL_USER + GMAIL_APP_PASSWORD from Supabase Secrets
+        (encrypted at rest, NEVER in code or git), and sends a
+        branded HTML email via Gmail SMTP using denomailer.
+     2. supabase/config.toml + supabase/functions/README.md walk
+        through CLI install, login, link, secret-set and deploy.
+        Reasoning explained for --no-verify-jwt + the security model
+        of never storing the SMTP password in the repo.
+     3. Client gains sendDeclineEmailAutomated() that calls
+        db.functions.invoke('send-decline-email'). On any failure
+        (function not deployed, secrets missing, network error)
+        it gracefully falls back to the v1.6.20 mailto: draft so
+        the admin is never blocked. Distinct toasts inform the
+        admin which path was taken.
+     4. Repo-root .gitignore now blocks .env, .env.*, supabase/.env,
+        *.secret, *.key, *.pem, _commit_msg.txt, etc. — defensive
+        protection against accidental secret commits.
+   * Why this matters: admins now click ONE button and the user
+     receives a polished, brand-styled email automatically — no
+     mail-client juggling. The SMTP credentials never touch the
+     client, the repo, or the database; they live only in Supabase
+     Edge Function Secrets.
+   Carries forward from v1.6.20:
+   * Decline-with-reason modal + persistent user notifications.
+   * In-app banner with Try Again button.
+   * Audit trigger cleanup. */
+const VERSION = 'hiq-v1.6.21';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
