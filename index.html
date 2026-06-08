@@ -5199,7 +5199,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.22';
+    const APP_VERSION = '1.6.23';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -6568,6 +6568,7 @@
                     } catch (_) { /* table may not exist — silent */ }
 
                     let emailOk = null; // null = no email sent (no address)
+                    let emailReason = '';
                     if (userEmail) {
                         const sent = await sendTransactionalEmail({
                             type: 'approved',
@@ -6577,9 +6578,12 @@
                             amount: amount
                         });
                         emailOk = !!sent.ok;
-                        if (!sent.ok) console.warn('[approveAll] email failed for', userEmail, ':', sent.reason);
+                        if (!sent.ok) {
+                            emailReason = sent.reason || 'unknown';
+                            console.warn('[approveAll] email failed for', userEmail, ':', emailReason);
+                        }
                     }
-                    return { ok:true, id:o.id, emailOk: emailOk };
+                    return { ok:true, id:o.id, emailOk: emailOk, emailReason: emailReason };
                 } catch(e){ return { ok:false, id:o.id, err:e }; }
             }));
             const success = results.filter(r=>r.ok).length;
@@ -6587,8 +6591,16 @@
             const emailsSent   = results.filter(r=>r.ok && r.emailOk === true).length;
             const emailsFailed = results.filter(r=>r.ok && r.emailOk === false).length;
             if (failed) console.warn('approveAllPending failures:', results.filter(r=>!r.ok));
+            // v1.6.23 — if emails failed, include a representative reason in
+            // the toast so the admin sees the root cause (e.g. EAUTH, ECONN)
+            // without opening DevTools. We grab the first failure's reason —
+            // if reasons differ per row, the per-row console.warn still shows
+            // them all in the browser console.
+            const firstEmailErr = emailsFailed
+                ? (results.find(r => r.ok && r.emailOk === false)?.emailReason || 'see console')
+                : '';
             const emailNote = emailsFailed
-                ? ' · ' + emailsSent + ' emails sent, ' + emailsFailed + ' email(s) failed'
+                ? ' · ' + emailsSent + ' email(s) sent, ' + emailsFailed + ' failed: ' + firstEmailErr
                 : emailsSent ? ' · ' + emailsSent + ' emails sent ✉️' : '';
             showToast(success+' orders approved'+(failed?(', '+failed+' failed'):'')+emailNote+'!', (failed||emailsFailed)?'warning':'success');
             await fetchOrders(); updateSidebarCounts(); renderAdminNotifications();
@@ -7736,6 +7748,7 @@
                 // fails we surface a warning toast so the admin knows to
                 // check the function logs.
                 let emailStatus = 'skipped';
+                let emailErrorReason = '';
                 if (userEmail) {
                     const sent = await sendTransactionalEmail({
                         type: 'approved',
@@ -7745,13 +7758,17 @@
                         amount: amount
                     });
                     emailStatus = sent.ok ? 'sent' : 'failed';
-                    if (!sent.ok) console.warn('[approve] email send failed:', sent.reason);
+                    if (!sent.ok) {
+                        emailErrorReason = sent.reason || 'unknown';
+                        console.warn('[approve] email send failed:', emailErrorReason);
+                    }
                 }
 
+                // v1.6.23 — surface SMTP failure reason directly in the toast.
                 if (emailStatus === 'sent') {
                     showToast('Payment approved & welcome email sent ✓', 'success');
                 } else if (emailStatus === 'failed') {
-                    showToast('Payment approved ✓ — course unlocked, but welcome email failed. Check Edge Function logs.', 'warning');
+                    showToast('Payment approved ✓ — course unlocked, but welcome email failed: ' + emailErrorReason, 'warning');
                 } else {
                     showToast('Payment approved ✓ — user has no email on file, only in-app notice was sent.', 'warning');
                 }
@@ -7886,6 +7903,7 @@
             //    decline still persists (in-app notification keeps the user
             //    informed). No more "click Send in your mail client" UX.
             let emailStatus = 'skipped';
+            let emailErrorReason = '';
             if (userEmail) {
                 const sent = await sendTransactionalEmail({
                     type: 'declined',
@@ -7897,16 +7915,20 @@
                 });
                 emailStatus = sent.ok ? 'sent' : 'failed';
                 if (!sent.ok) {
-                    console.warn('[decline] email send failed:', sent.reason);
+                    emailErrorReason = sent.reason || 'unknown';
+                    console.warn('[decline] email send failed:', emailErrorReason);
                 }
             }
 
             // 4) UX feedback — distinct toast per outcome so admin always knows
-            //    exactly what was (and wasn't) delivered.
+            //    exactly what was (and wasn't) delivered. v1.6.23: the failure
+            //    reason from the Edge Function (e.g. EAUTH/SMTP 535, ECONNECTION)
+            //    is surfaced directly in the toast so the admin doesn't need to
+            //    open DevTools or function logs to diagnose.
             if (emailStatus === 'sent') {
                 showToast('Payment declined and user notified by email ✓', 'success');
             } else if (emailStatus === 'failed') {
-                showToast('Payment declined ✓ — in-app notice sent, but email delivery failed. Check Edge Function logs.', 'warning');
+                showToast('Payment declined ✓ — in-app notice sent, but email failed: ' + emailErrorReason, 'warning');
             } else {
                 showToast('Payment declined ✓ — user has no email on file, only in-app notice was sent.', 'warning');
             }

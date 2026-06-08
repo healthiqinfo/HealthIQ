@@ -1,51 +1,46 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.22 — Fully-automated email for BOTH approve & decline.
-   * Problem: v1.6.21 shipped the Edge Function and made the decline
-     email automatic, but (a) the decline modal still had a "Also
-     open my email client" checkbox + mailto: fallback that confused
-     admins ("why does it ask me when SMTP is configured?"), and
-     (b) approvals fired NO email at all — students had to log in
-     and check My Courses to know their payment cleared.
+   v1.6.23 — Hotfix: swap denomailer → nodemailer (Gmail TLS bug).
+   * Problem: v1.6.22 emails were intermittently failing in
+     production with:
+       "peer closed connection without sending TLS close_notify"
+       + "BadResource: Bad resource ID" event-loop exceptions.
+     Root cause: denomailer@1.6.0 doesn't gracefully handle
+     Gmail closing the SMTP socket without a TLS close_notify
+     frame. The email IS accepted by Gmail (and often delivered),
+     but denomailer throws while reading the closing handshake,
+     so our function returns 500 and the admin sees "email
+     delivery failed" even though Gmail received the message.
    * Fix:
-     1. Edge Function `send-decline-email` is now TYPE-AWARE.
-        Accepts `type: 'declined' | 'approved'` and renders two
-        distinct, mobile-friendly, brand-styled HTML templates:
-        – Decline: red alert card + clear next-steps + Open HealthIQ CTA.
-        – Approve: 🎉 green confirmation + bullet quick-start + big
-          "Start Learning Now" gradient CTA + gold-medalist badge.
-        Subject lines, preheader text, and plain-text fallbacks all
-        flip per type. Same dual admin check + secret redaction.
-     2. Client-side `confirmDeclineOrder()` now ALWAYS sends via the
-        Edge Function — no checkbox, no mailto: fallback. The
-        decline modal carries a green confirmation strip showing
-        the recipient address so the admin sees the commitment up
-        front. `openDeclineEmailDraft()` is now a no-op stub for
-        backwards-compat with stale browser caches.
-     3. NEW generic `sendTransactionalEmail({ type, ... })` helper
-        wraps both flows. Single call site, single error-handling
-        path, identical fallback toasts.
-     4. `approveOrder()` + `approveAllPending()` now both:
-        (a) insert a `payment_approved` notification row so the
-            user sees the good news on their bell, and
-        (b) fire the branded approval email automatically.
-        Distinct toasts ("approved + email sent", "approved + email
-        failed", "approved + no address") give the admin precise
-        feedback per outcome. Bulk approve summarises N emails
-        sent / M failed at the end.
-     5. Decline modal cleanup: zero choice points. Admin picks a
-        reason, clicks Decline, the user gets a beautiful email
-        and an in-app notification. Done.
-   * Why this matters: zero-click email automation in EVERY scenario
-     — approve and decline both ship gorgeous HTML with proper
-     branding, headers, and CTAs. SMTP creds stay in Supabase
-     Secrets, the repo stays clean, the admin never opens another
-     mail client window.
-   Carries forward from v1.6.21:
-   * Supabase Edge Function + Gmail SMTP (denomailer).
-   * Dual admin check (profiles.role OR bootstrap email).
-   * Secret redaction in error logs.
-   * Persistent in-app notifications + audit trigger cleanup. */
-const VERSION = 'hiq-v1.6.22';
+     1. Edge Function `send-decline-email` now imports
+        `nodemailer` via Deno's `npm:` specifier
+        (`import nodemailer from "npm:nodemailer@^6.9.7"`).
+        Nodemailer is the battle-tested Node.js SMTP library;
+        it handles Gmail's no-close_notify cleanly and exposes
+        proper SMTP error codes (EAUTH, ECONNECTION, EENVELOPE,
+        etc.) so the admin sees actionable reasons.
+     2. Error responses now include the SMTP error code +
+        responseCode so the failure mode is obvious from the
+        toast alone (e.g. "[EAUTH / SMTP 535] Username and
+        Password not accepted").
+     3. Client toasts in confirmDeclineOrder, approveOrder, and
+        approveAllPending now surface the failure reason
+        directly — no more "Check Edge Function logs" dead-end.
+        Bulk approve shows the first failure's reason as a
+        representative sample.
+     4. Connection/greeting/socket timeouts (15s/10s/20s) added
+        to fail fast if Gmail is unreachable, instead of burning
+        the Edge Function's 25s execution budget.
+   * Why this matters: the email pipeline is now reliable AND
+     self-diagnosing. When something does break, the admin sees
+     "[EAUTH] Username and Password not accepted" in the toast
+     and knows immediately to rotate the app password — no
+     log-digging required.
+   Carries forward from v1.6.22:
+   * Type-aware Edge Function (decline + approve templates).
+   * Zero-click email automation for both approve and decline.
+   * Persistent in-app notifications for both outcomes.
+   * Dual admin check + secret redaction in errors. */
+const VERSION = 'hiq-v1.6.23';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

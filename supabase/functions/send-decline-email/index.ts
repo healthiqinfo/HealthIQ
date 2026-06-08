@@ -26,11 +26,23 @@
  *    Edge Function Secrets — encrypted at rest, never in code,
  *    never in git, never returned in responses or logs (we even
  *    redact long base64-looking blobs from error messages so the
- *    password can't leak if denomailer surfaces it in an
+ *    password can't leak if nodemailer surfaces it in an
  *    exception).
  *
  * 3. Input validation: required fields per type, free-text
  *    fields HTML-escaped before template interpolation.
+ *
+ * SMTP LIBRARY — v1.6.23 switched from denomailer → nodemailer
+ * ────────────────────────────────────────────────────────────
+ * denomailer@1.6.0 has a known bug talking to Gmail: Gmail
+ * closes the SMTP socket without sending a TLS close_notify
+ * frame, which Deno's TLS layer raises as a fatal error AFTER
+ * the email has already been accepted. Symptom in production:
+ *   "peer closed connection without sending TLS close_notify"
+ *   + "BadResource: Bad resource ID" event-loop exceptions.
+ * The fix is nodemailer via Deno's `npm:` specifier — it's the
+ * battle-tested Node.js SMTP library, and Supabase Edge Functions
+ * have first-class npm support, so this Just Works™ on Gmail.
  *
  * DEPLOY
  * ──────
@@ -42,7 +54,11 @@
 // @ts-nocheck — file targets Deno runtime; local TS engine isn't Deno-aware.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+// Nodemailer over Deno's npm: specifier. v6.9.x is the current stable
+// line; it handles Gmail's TLS close quirk gracefully and gives us
+// proper SMTP error codes (e.g. EAUTH for bad app password) so the
+// admin sees a useful reason in the toast.
+import nodemailer from "npm:nodemailer@^6.9.7";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -406,33 +422,64 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        // 4. Send via Gmail SMTP
-        const client = new SMTPClient({
-            connection: {
-                hostname: "smtp.gmail.com",
-                port: 465,
-                tls: true,
-                auth: { username: gmailUser, password: gmailPass },
-            },
+        // 4. Send via Gmail SMTP using nodemailer (v1.6.23+).
+        //    Notes on the config:
+        //    - port 465 + secure:true = implicit TLS (Gmail's recommended config).
+        //    - service:'gmail' would also work, but explicit host/port is more
+        //      self-documenting and survives Gmail service-string rename quirks.
+        //    - `pool:false` keeps it a fresh connection per send — we only send
+        //      one email per invocation, no benefit to pooling, and it avoids
+        //      lingering sockets between Edge Function cold starts.
+        //    - `tls: { minVersion: 'TLSv1.2' }` is Gmail's minimum since 2024.
+        const transporter = nodemailer.createTransport({
+            host: "smtp.gmail.com",
+            port: 465,
+            secure: true,
+            auth: { user: gmailUser, pass: gmailPass },
+            pool: false,
+            tls: { minVersion: "TLSv1.2" },
+            // Edge Functions cold-start fast; if SMTP hangs >15s something is
+            // very wrong and we'd rather fail fast than burn function quota.
+            connectionTimeout: 15000,
+            greetingTimeout: 10000,
+            socketTimeout: 20000,
         });
 
         try {
-            await client.send({
+            const info = await transporter.sendMail({
                 from: `HealthIQ Academy <${gmailUser}>`,
                 to: payload.to,
                 subject: buildSubject(payload),
-                content: buildText(payload),
+                text: buildText(payload),
                 html: buildHtml(payload),
             });
+            console.log(
+                `[send-decline-email] ${payload.type} → ${payload.to} | messageId=${info.messageId} | response=${info.response}`,
+            );
         } finally {
-            try { await client.close(); } catch (_) { /* best-effort close */ }
+            // Best-effort close — nodemailer handles Gmail's no-close_notify
+            // gracefully, but we still call close() to release the socket
+            // immediately rather than waiting for GC.
+            try { transporter.close(); } catch (_) { /* socket already gone */ }
         }
 
         return jsonResponse({ ok: true, type: payload.type, sent_to: payload.to });
     } catch (e) {
-        const raw = (e as Error)?.message || String(e);
+        // Surface a useful error message back to the client. Nodemailer attaches
+        // a `.code` (e.g. EAUTH, ECONNECTION, EENVELOPE) and `.responseCode`
+        // (SMTP reply code like 535) which are way more actionable than the
+        // raw message alone. We still redact long base64-looking blobs so the
+        // app password can never leak into the response, even if Gmail echoes
+        // it back in an error string.
+        const err = e as { message?: string; code?: string; responseCode?: number; response?: string };
+        const parts: string[] = [];
+        if (err?.code) parts.push(err.code);
+        if (err?.responseCode) parts.push(`SMTP ${err.responseCode}`);
+        const baseMsg = err?.message || err?.response || String(e) || "Unknown SMTP error";
+        const prefix = parts.length ? `[${parts.join(" / ")}] ` : "";
+        const raw = `${prefix}${baseMsg}`;
         const safe = raw.replace(/[A-Za-z0-9+/=]{16,}/g, "[redacted]");
         console.error("send-decline-email failed:", safe);
-        return jsonResponse({ error: safe }, 500);
+        return jsonResponse({ error: safe, code: err?.code || null }, 500);
     }
 });
