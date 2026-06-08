@@ -5199,7 +5199,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.21';
+    const APP_VERSION = '1.6.22';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -6517,6 +6517,11 @@
         adminConfirm('Approve ALL '+pending.length+' pending payments? This will grant course access to all.', async()=>{
             // Process all approvals in parallel. Each item still does its own
             // enrollment-first / order-update / rollback dance for consistency.
+            // v1.6.22 — after a successful approval, fire the in-app
+            // notification + branded approval email in parallel. We don't
+            // block the loop's success counter on email delivery — the
+            // result object tracks email status separately so the admin
+            // gets a precise toast at the end.
             const results = await Promise.all(pending.map(async o => {
                 let enrollmentId = null;
                 try {
@@ -6545,14 +6550,49 @@
                         if (enrollmentId) { try { await db.from('enrollments').delete().eq('id', enrollmentId); } catch(_){} }
                         return { ok:false, id:o.id, err: oe };
                     }
-                    return { ok:true, id:o.id };
+
+                    // ── v1.6.22: notify + email (best-effort, never throws) ──
+                    const courseTitle = o.courses?.title || (APP.courses.find(c => c.id === o.course_id)?.title) || 'the course';
+                    const userName    = o.profiles?.full_name || 'there';
+                    const userEmail   = o.profiles?.email || '';
+                    const amount      = o.total_amount || o.amount || 0;
+
+                    try {
+                        await db.from('notifications').insert({
+                            user_id: o.user_id,
+                            type: 'payment_approved',
+                            title: 'Payment confirmed — course unlocked! 🎉',
+                            body: 'Your access to "' + courseTitle + '" is now active. Open My Courses to start learning.',
+                            metadata: { order_id: o.id, course_id: o.course_id, course_title: courseTitle, amount: amount }
+                        });
+                    } catch (_) { /* table may not exist — silent */ }
+
+                    let emailOk = null; // null = no email sent (no address)
+                    if (userEmail) {
+                        const sent = await sendTransactionalEmail({
+                            type: 'approved',
+                            to: userEmail,
+                            userName: userName,
+                            courseTitle: courseTitle,
+                            amount: amount
+                        });
+                        emailOk = !!sent.ok;
+                        if (!sent.ok) console.warn('[approveAll] email failed for', userEmail, ':', sent.reason);
+                    }
+                    return { ok:true, id:o.id, emailOk: emailOk };
                 } catch(e){ return { ok:false, id:o.id, err:e }; }
             }));
             const success = results.filter(r=>r.ok).length;
             const failed = results.length - success;
+            const emailsSent   = results.filter(r=>r.ok && r.emailOk === true).length;
+            const emailsFailed = results.filter(r=>r.ok && r.emailOk === false).length;
             if (failed) console.warn('approveAllPending failures:', results.filter(r=>!r.ok));
-            showToast(success+' orders approved'+(failed?(', '+failed+' failed'):'')+'!', failed?'warning':'success');
+            const emailNote = emailsFailed
+                ? ' · ' + emailsSent + ' emails sent, ' + emailsFailed + ' email(s) failed'
+                : emailsSent ? ' · ' + emailsSent + ' emails sent ✉️' : '';
+            showToast(success+' orders approved'+(failed?(', '+failed+' failed'):'')+emailNote+'!', (failed||emailsFailed)?'warning':'success');
             await fetchOrders(); updateSidebarCounts(); renderAdminNotifications();
+            if (typeof NotificationCenter !== 'undefined') NotificationCenter.refresh();
         });
     }
 
@@ -7621,6 +7661,17 @@
 
     // Admin: Approve/Reject payment
     async function approveOrder(orderId, userId, courseId) {
+        // v1.6.22 — look up the order's user/course details up front so we
+        // can fire the approval email + persistent in-app notification AFTER
+        // the DB updates succeed. We pull from APP.orders (already populated
+        // by fetchOrders with profiles + courses joined) instead of doing a
+        // round-trip — keeps the click-to-toast latency snappy.
+        const o = (APP.orders || []).find(x => String(x.id) === String(orderId));
+        const courseTitle = o?.courses?.title || (APP.courses.find(c => c.id === courseId)?.title) || 'the course';
+        const userName    = o?.profiles?.full_name || 'there';
+        const userEmail   = o?.profiles?.email || '';
+        const amount      = o?.total_amount || o?.amount || 0;
+
         adminConfirm('Approve this payment and grant course access?', async()=>{
             // STRATEGY: insert enrollment FIRST. If it fails (e.g. unique-constraint
             // violation because the user is already enrolled), we don't mark the
@@ -7662,9 +7713,51 @@
                     throw oe;
                 }
 
-                showToast('Payment approved! User can now access the course.','success');
+                // v1.6.22 — Persistent in-app notification. Mirrors the
+                // decline flow so the user sees the good news on their
+                // notification bell next time they open the app, even if
+                // the email lands in spam. We never let this block the
+                // approval — table missing? Just warn and move on.
+                try {
+                    const { error: ne } = await db.from('notifications').insert({
+                        user_id: userId,
+                        type: 'payment_approved',
+                        title: 'Payment confirmed — course unlocked! 🎉',
+                        body: 'Your access to "' + courseTitle + '" is now active. Open My Courses to start learning.',
+                        metadata: { order_id: orderId, course_id: courseId, course_title: courseTitle, amount: amount }
+                    });
+                    if (ne) console.warn('[approve] notifications insert failed:', ne.message, '— run SUPABASE_NOTIFICATIONS_MIGRATION.sql.');
+                } catch (e) { console.warn('[approve] notification skipped:', e); }
+
+                // v1.6.22 — Branded approval email via the same Edge
+                // Function (`send-decline-email`, now type-aware). We
+                // intentionally do NOT block the success toast on email
+                // delivery: the access is granted regardless. If email
+                // fails we surface a warning toast so the admin knows to
+                // check the function logs.
+                let emailStatus = 'skipped';
+                if (userEmail) {
+                    const sent = await sendTransactionalEmail({
+                        type: 'approved',
+                        to: userEmail,
+                        userName: userName,
+                        courseTitle: courseTitle,
+                        amount: amount
+                    });
+                    emailStatus = sent.ok ? 'sent' : 'failed';
+                    if (!sent.ok) console.warn('[approve] email send failed:', sent.reason);
+                }
+
+                if (emailStatus === 'sent') {
+                    showToast('Payment approved & welcome email sent ✓', 'success');
+                } else if (emailStatus === 'failed') {
+                    showToast('Payment approved ✓ — course unlocked, but welcome email failed. Check Edge Function logs.', 'warning');
+                } else {
+                    showToast('Payment approved ✓ — user has no email on file, only in-app notice was sent.', 'warning');
+                }
                 if (typeof confettiBurst === 'function') confettiBurst({ count: 70 });
                 await fetchOrders(); renderAdminOrders(); updateSidebarCounts();
+                if (typeof NotificationCenter !== 'undefined') NotificationCenter.refresh();
             } catch(e){
                 console.error('approveOrder failed:', e);
                 showToast('Error: '+(e.message||'Approval failed'),'error');
@@ -7727,9 +7820,13 @@
             '<div style="margin-top:0.8rem;"><strong style="font-size:0.85rem;">Or write a custom reason:</strong>' +
                 '<textarea id="declineCustomReason" placeholder="(Optional) Override the selection above with your own message…" rows="2" style="width:100%;padding:0.6rem;border:1px solid var(--gray-200);border-radius:6px;margin-top:0.3rem;font-family:inherit;font-size:0.85rem;resize:vertical;" oninput="document.querySelectorAll(\'#declineOrderModal input[name=declineReason]\').forEach(r=>r.checked=false);"></textarea>' +
             '</div>' +
-            '<label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.8rem;font-size:0.85rem;cursor:pointer;">' +
-                '<input type="checkbox" id="declineSendEmail" checked> Also open my email client to send the user a notice' +
-            '</label>' +
+            // v1.6.22 — the "open my email client" checkbox is gone. Emails are
+            // ALWAYS sent automatically via the Supabase Edge Function (Gmail SMTP).
+            // We surface this commitment in the UI so the admin knows the
+            // outbound email will be delivered without any further action.
+            '<div style="margin-top:0.8rem;padding:0.6rem 0.75rem;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;font-size:0.78rem;color:#065f46;display:flex;align-items:center;gap:0.5rem;">' +
+                '<span style="font-size:1rem;">📧</span><span>A branded HTML email will be sent automatically to <strong>' + Utils.escapeHtml(userEmail || 'the user') + '</strong>.</span>' +
+            '</div>' +
             '</div>' +
             '<div style="display:flex;gap:0.6rem;justify-content:flex-end;margin-top:1.2rem;">' +
                 '<button class="btn btn-ghost" onclick="document.getElementById(\'declineOrderModal\').classList.remove(\'active\')">Cancel</button>' +
@@ -7741,12 +7838,11 @@
             const custom = (document.getElementById('declineCustomReason')?.value || '').trim();
             const picked = document.querySelector('#declineOrderModal input[name=declineReason]:checked');
             const reason = custom || picked?.value || DECLINE_REASONS[0].label;
-            const sendEmail = !!document.getElementById('declineSendEmail')?.checked;
-            confirmDeclineOrder(order.id, order.user_id, order.course_id, courseTitle, amount, userEmail, userName, reason, sendEmail);
+            confirmDeclineOrder(order.id, order.user_id, order.course_id, courseTitle, amount, userEmail, userName, reason);
         };
     }
 
-    async function confirmDeclineOrder(orderId, userId, courseId, courseTitle, amount, userEmail, userName, reason, sendEmail) {
+    async function confirmDeclineOrder(orderId, userId, courseId, courseTitle, amount, userEmail, userName, reason) {
         const btn = document.getElementById('declineConfirmBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'Processing…'; }
         try {
@@ -7783,36 +7879,38 @@
                 if (ne) console.warn('[decline] notifications insert failed:', ne.message, '— run SUPABASE_NOTIFICATIONS_MIGRATION.sql.');
             } catch (e) { console.warn('[decline] notification skipped:', e); }
 
-            // 3) Email the user. v1.6.21 — preferred path is the
-            //    automated Supabase Edge Function (Gmail SMTP, server-side,
-            //    secret-encrypted). If the function isn't deployed yet OR
-            //    the call fails (network, CORS, missing secrets), we fall
-            //    back to opening the admin's mail client with a prefilled
-            //    draft so the decline still gets communicated. The user
-            //    sees a different toast for each path so they know whether
-            //    to manually click Send or not.
-            if (sendEmail && userEmail) {
-                const sent = await sendDeclineEmailAutomated({
+            // 3) Email the user. v1.6.22 — the email is ALWAYS sent via the
+            //    Supabase Edge Function (Gmail SMTP, server-side, secret
+            //    encrypted). The legacy mailto: fallback is gone — if email
+            //    delivery fails, we surface that as a warning toast and the
+            //    decline still persists (in-app notification keeps the user
+            //    informed). No more "click Send in your mail client" UX.
+            let emailStatus = 'skipped';
+            if (userEmail) {
+                const sent = await sendTransactionalEmail({
+                    type: 'declined',
                     to: userEmail,
                     userName: userName,
                     courseTitle: courseTitle,
                     amount: amount,
                     reason: reason
                 });
+                emailStatus = sent.ok ? 'sent' : 'failed';
                 if (!sent.ok) {
-                    console.warn('[decline] automated email failed, falling back to mailto draft:', sent.reason);
-                    openDeclineEmailDraft(userEmail, userName, courseTitle, amount, reason);
-                    showToast('Payment declined. Email automation unavailable — your mail client opened so you can send it manually.', 'warning');
-                    document.getElementById('declineOrderModal')?.classList.remove('active');
-                    await fetchOrders();
-                    renderAdminOrders();
-                    updateSidebarCounts();
-                    if (typeof NotificationCenter !== 'undefined') NotificationCenter.refresh();
-                    return;
+                    console.warn('[decline] email send failed:', sent.reason);
                 }
             }
 
-            showToast('Payment declined and user notified ✓', 'success');
+            // 4) UX feedback — distinct toast per outcome so admin always knows
+            //    exactly what was (and wasn't) delivered.
+            if (emailStatus === 'sent') {
+                showToast('Payment declined and user notified by email ✓', 'success');
+            } else if (emailStatus === 'failed') {
+                showToast('Payment declined ✓ — in-app notice sent, but email delivery failed. Check Edge Function logs.', 'warning');
+            } else {
+                showToast('Payment declined ✓ — user has no email on file, only in-app notice was sent.', 'warning');
+            }
+
             document.getElementById('declineOrderModal')?.classList.remove('active');
             await fetchOrders();
             renderAdminOrders();
@@ -7826,29 +7924,44 @@
         }
     }
 
-    // v1.6.21 — Automated decline email via Supabase Edge Function.
-    // Returns { ok: true } on success, { ok: false, reason } on any failure
-    // so the caller can decide whether to fall back to mailto:. We never
-    // throw — the decline must persist in the DB even if email is broken.
-    async function sendDeclineEmailAutomated({ to, userName, courseTitle, amount, reason }) {
+    // v1.6.22 — Generic transactional-email sender used by BOTH the decline
+    // flow and the approve flow. Calls the Supabase Edge Function
+    // `send-decline-email` (name kept for backwards-compat with the
+    // already-deployed function URL) with a `type` field that picks the
+    // correct HTML template on the server. Returns { ok: true } on success,
+    // { ok: false, reason } on failure — we never throw because the DB
+    // mutation must persist even if email is broken.
+    //
+    // type:        'declined' | 'approved'
+    // to:          recipient email address (required)
+    // userName:    used in the greeting (optional, defaults to "there")
+    // courseTitle: human-readable course name (required by the function)
+    // amount:      numeric INR amount paid/attempted (required)
+    // reason:      decline reason (required when type='declined')
+    async function sendTransactionalEmail({ type, to, userName, courseTitle, amount, reason }) {
         if (!isSupabaseConfigured()) return { ok: false, reason: 'Supabase not configured' };
+        if (!to) return { ok: false, reason: 'No recipient email' };
+        if (type !== 'declined' && type !== 'approved') {
+            return { ok: false, reason: "Invalid type '" + type + "' — must be 'declined' or 'approved'" };
+        }
         try {
-            const { data, error } = await db.functions.invoke('send-decline-email', {
-                body: {
-                    to: to,
-                    userName: userName || '',
-                    courseTitle: courseTitle || '',
-                    amount: Number(amount) || 0,
-                    reason: reason || '',
-                    siteUrl: window.location.origin + window.location.pathname.replace(/\/index\.html$/i, '/')
-                }
-            });
+            const body = {
+                type: type,
+                to: to,
+                userName: userName || '',
+                courseTitle: courseTitle || '',
+                amount: Number(amount) || 0,
+                siteUrl: window.location.origin + window.location.pathname.replace(/\/index\.html$/i, '/')
+            };
+            if (type === 'declined') body.reason = reason || '';
+            const { data, error } = await db.functions.invoke('send-decline-email', { body });
             if (error) {
-                // Common cases:
-                //  - Function not deployed yet → 404 / FunctionsHttpError
-                //  - Caller isn't admin       → 403 (shouldn't happen — we
-                //    only show the modal to admins, but defensive)
-                //  - SMTP creds missing       → 500 with helpful message
+                // Common failure cases (in order of likelihood):
+                //  - Function not deployed yet → FunctionsHttpError 404
+                //  - Caller's session expired  → 401
+                //  - Caller isn't admin        → 403 (debug field has the details)
+                //  - SMTP creds missing        → 500 with helpful message
+                //  - Network / CORS issue      → FunctionsFetchError
                 return { ok: false, reason: error.message || 'Edge Function returned an error' };
             }
             if (data && data.ok) return { ok: true };
@@ -7866,50 +7979,18 @@
     // fails. Primary path is the Supabase Edge Function (server-side
     // Gmail SMTP). This keeps the admin unblocked even if the function
     // isn't deployed or secrets aren't set yet.
-    function openDeclineEmailDraft(toEmail, userName, courseTitle, amount, reason) {
-        const subject = 'HealthIQ — Action needed on your payment for "' + courseTitle + '"';
-        const lines = [
-            'Hi ' + (userName || 'there') + ',',
-            '',
-            'Thanks for your interest in HealthIQ. We attempted to verify your',
-            'recent payment for the course below, but we were unable to confirm',
-            'it on our end.',
-            '',
-            '────────────────────────────',
-            'Course : ' + courseTitle,
-            'Amount : ' + Utils.formatCurrency(amount),
-            'Status : Declined',
-            'Reason : ' + reason,
-            '────────────────────────────',
-            '',
-            'What to do next',
-            '───────────────',
-            '1. Re-check the UPI / bank account you transferred to.',
-            '2. If the money was deducted, please reply to this email with a',
-            '   clear screenshot of the transaction (showing UTR / reference no.).',
-            '3. If no money left your account, simply re-initiate the payment',
-            '   from the HealthIQ website — your previous request has been',
-            '   cleared so you can try again immediately.',
-            '',
-            'You can also log in and click "Try Again" on the in-app',
-            'notification we just sent you.',
-            '',
-            'If you have any questions, reply to this email and we\'ll help',
-            'you out personally.',
-            '',
-            'Warm regards,',
-            'The HealthIQ Team',
-            ''
-        ];
-        const body = lines.join('\r\n');
-        const mailto = 'mailto:' + encodeURIComponent(toEmail) +
-            '?subject=' + encodeURIComponent(subject) +
-            '&body=' + encodeURIComponent(body);
-        // Use a transient hidden anchor so popup blockers don't kill us.
-        const a = document.createElement('a');
-        a.href = mailto; a.rel = 'noopener';
-        document.body.appendChild(a); a.click();
-        setTimeout(() => a.remove(), 100);
+    //
+    // v1.6.22: REMOVED. The mailto: fallback created admin UX friction
+    // — every decline forced the admin into a manual mail-client click.
+    // Now that Gmail SMTP is fully configured + verified via smoke test,
+    // emails are ALWAYS sent server-side. If the Edge Function ever
+    // fails, the decline still persists in the DB and the in-app
+    // notification still fires; the admin just sees a warning toast.
+    // This function is intentionally left as a stub so any stale
+    // browser cache calling it doesn't blow up — it now no-ops with
+    // a console warning.
+    function openDeclineEmailDraft(/* toEmail, userName, courseTitle, amount, reason */) {
+        console.warn('[decline] openDeclineEmailDraft is a no-op in v1.6.22+ — email is now sent automatically by the Supabase Edge Function. If you reached this code path, refresh the page to get the latest client.');
     }
 
     // ===== USER MENU =====

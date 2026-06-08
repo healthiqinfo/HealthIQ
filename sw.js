@@ -1,38 +1,51 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.21 — Automated decline-email delivery via Supabase Edge Function.
-   * Problem: v1.6.20 shipped a decline-with-reason flow but the email
-     step was a mailto: link — admin had to manually click Send in
-     their mail client every time. User asked for full automation.
+   v1.6.22 — Fully-automated email for BOTH approve & decline.
+   * Problem: v1.6.21 shipped the Edge Function and made the decline
+     email automatic, but (a) the decline modal still had a "Also
+     open my email client" checkbox + mailto: fallback that confused
+     admins ("why does it ask me when SMTP is configured?"), and
+     (b) approvals fired NO email at all — students had to log in
+     and check My Courses to know their payment cleared.
    * Fix:
-     1. NEW Supabase Edge Function `send-decline-email`
-        (supabase/functions/send-decline-email/index.ts) running on
-        Deno. Verifies the caller's JWT is an admin, reads
-        GMAIL_USER + GMAIL_APP_PASSWORD from Supabase Secrets
-        (encrypted at rest, NEVER in code or git), and sends a
-        branded HTML email via Gmail SMTP using denomailer.
-     2. supabase/config.toml + supabase/functions/README.md walk
-        through CLI install, login, link, secret-set and deploy.
-        Reasoning explained for --no-verify-jwt + the security model
-        of never storing the SMTP password in the repo.
-     3. Client gains sendDeclineEmailAutomated() that calls
-        db.functions.invoke('send-decline-email'). On any failure
-        (function not deployed, secrets missing, network error)
-        it gracefully falls back to the v1.6.20 mailto: draft so
-        the admin is never blocked. Distinct toasts inform the
-        admin which path was taken.
-     4. Repo-root .gitignore now blocks .env, .env.*, supabase/.env,
-        *.secret, *.key, *.pem, _commit_msg.txt, etc. — defensive
-        protection against accidental secret commits.
-   * Why this matters: admins now click ONE button and the user
-     receives a polished, brand-styled email automatically — no
-     mail-client juggling. The SMTP credentials never touch the
-     client, the repo, or the database; they live only in Supabase
-     Edge Function Secrets.
-   Carries forward from v1.6.20:
-   * Decline-with-reason modal + persistent user notifications.
-   * In-app banner with Try Again button.
-   * Audit trigger cleanup. */
-const VERSION = 'hiq-v1.6.21';
+     1. Edge Function `send-decline-email` is now TYPE-AWARE.
+        Accepts `type: 'declined' | 'approved'` and renders two
+        distinct, mobile-friendly, brand-styled HTML templates:
+        – Decline: red alert card + clear next-steps + Open HealthIQ CTA.
+        – Approve: 🎉 green confirmation + bullet quick-start + big
+          "Start Learning Now" gradient CTA + gold-medalist badge.
+        Subject lines, preheader text, and plain-text fallbacks all
+        flip per type. Same dual admin check + secret redaction.
+     2. Client-side `confirmDeclineOrder()` now ALWAYS sends via the
+        Edge Function — no checkbox, no mailto: fallback. The
+        decline modal carries a green confirmation strip showing
+        the recipient address so the admin sees the commitment up
+        front. `openDeclineEmailDraft()` is now a no-op stub for
+        backwards-compat with stale browser caches.
+     3. NEW generic `sendTransactionalEmail({ type, ... })` helper
+        wraps both flows. Single call site, single error-handling
+        path, identical fallback toasts.
+     4. `approveOrder()` + `approveAllPending()` now both:
+        (a) insert a `payment_approved` notification row so the
+            user sees the good news on their bell, and
+        (b) fire the branded approval email automatically.
+        Distinct toasts ("approved + email sent", "approved + email
+        failed", "approved + no address") give the admin precise
+        feedback per outcome. Bulk approve summarises N emails
+        sent / M failed at the end.
+     5. Decline modal cleanup: zero choice points. Admin picks a
+        reason, clicks Decline, the user gets a beautiful email
+        and an in-app notification. Done.
+   * Why this matters: zero-click email automation in EVERY scenario
+     — approve and decline both ship gorgeous HTML with proper
+     branding, headers, and CTAs. SMTP creds stay in Supabase
+     Secrets, the repo stays clean, the admin never opens another
+     mail client window.
+   Carries forward from v1.6.21:
+   * Supabase Edge Function + Gmail SMTP (denomailer).
+   * Dual admin check (profiles.role OR bootstrap email).
+   * Secret redaction in error logs.
+   * Persistent in-app notifications + audit trigger cleanup. */
+const VERSION = 'hiq-v1.6.22';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
