@@ -1,4 +1,44 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
+   v1.6.32 — SUPER ELITE PDF Viewer (themes, brightness, milestones, micro-UX).
+   Pure index.html-only release (no SQL, no Edge Function, no migration changes).
+
+   === SUPER ELITE UPGRADES (v1.6.32, additive on top of Elite) ===
+   * Glassmorphic header bar (rgba bg + 22px backdrop-blur + 180% saturate)
+     with a 1px gradient accent line (blue → emerald) at the bottom edge.
+   * Title now renders with a 3-stop gradient text fill (white → sky → mint).
+   * Staggered entrance animations on viewer open: title slides down (0 ms);
+     badges fade-up at 100 / 180 / 260 ms; action group at 180 ms. Each
+     badge also gets a continuous 4.5 s shimmer halo.
+   * Buttons: cinematic 550 ms gradient sweep on hover + soft glow halo.
+   * Loading splash gets a multi-ring "shield" spinner — 3 counter-rotating
+     rings (blue / emerald / pink) around a pulsing 🛡️ core.
+   * NEW: Display popover (🎨 icon in bar). Two sections:
+       - Reading theme pills: ☀ Light · 📜 Sepia · 🌙 Dark
+       - Brightness slider 40–100 % (gradient thumb + glow)
+     Slides + scales in from the bar; outside click closes; ARIA labelled.
+   * Theme system uses browser-composited CSS `filter` on the iframe element
+     — works cross-origin against Drive WITHOUT touching its content.
+     Stage background swaps in sync so letterbox / load areas don't flash
+     white. Persisted via localStorage (hiq_pdf_theme + hiq_pdf_brightness).
+   * Brightness overlay (z-index 6, above watermark, below blockers) dims
+     uniformly across the entire reading surface.
+   * Bottom-center info strip — glass pill with continuously animated gradient
+     text "🛡️ Live · Watermarked · Secure · End-to-End Protected" (5.5s loop).
+     Dims in step with focus-mode.
+   * Secure-corner now also surfaces keyboard shortcuts (desktop only):
+       Esc close · F screen · R reload · T theme
+   * NEW single-key shortcuts (viewer open + target not editable):
+       F → toggle fullscreen
+       R → reload PDF
+       T → cycle theme
+   * Reading milestone toasts at 5 / 10 / 15 / 30 / 60 minutes — 🎯 ⭐ 🔥 🏆 👑
+     with motivating copy. Reset per session.
+   * Subtle 10 ms haptic feedback on button taps (mobile only; no-op
+     where navigator.vibrate is absent).
+   * @media (prefers-reduced-motion) honoured — shimmer / sweep / spin
+     animations disabled for users with the accessibility setting.
+
+   === CARRIED FORWARD FROM v1.6.31 (Elite foundation) ============
    v1.6.31 — Elite PDF Viewer + 30% lighter watermark + hardened security.
    Pure index.html-only release (no SQL, no Edge Function, no migration changes).
 
@@ -75,7 +115,7 @@
    * ALTER TABLE ADD COLUMN IF NOT EXISTS + NOTIFY pgrst reload.
    Carries forward from v1.6.25:
    * Realtime + 45s poll fallback + dual-admin RLS. */
-const VERSION = 'hiq-v1.6.31';
+const VERSION = 'hiq-v1.6.32';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

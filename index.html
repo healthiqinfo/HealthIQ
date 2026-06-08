@@ -679,6 +679,162 @@
             }
         }
 
+        /* =====================================================================
+           ===== SUPER ELITE LAYER (v1.6.32) ====================================
+           Drop-in upgrade on top of v1.6.31. Adds (top-to-bottom):
+             • Glassmorphism: translucent bar + 20px backdrop-filter blur + saturation,
+               plus a 1px bottom accent gradient that fades blue→emerald.
+             • Title gets a 3-color gradient text fill (white→sky→mint).
+             • Staggered slide-down: title 0ms, badges 100/180/260ms, actions 200ms.
+             • Buttons: cinematic shimmer-sweep on hover, subtle glow halo.
+             • Multi-ring "shield" spinner replaces the simple ring.
+             • Display popover with theme pills (Light / Sepia / Dark) + brightness slider.
+             • Iframe-level CSS filters apply themes WITHOUT touching Drive (cross-origin
+               safe — the browser composites the filter outside the iframe sandbox).
+             • Brightness overlay (z-index 6, above watermark, below corners/blockers).
+             • Bottom-center info strip with continuously-shifting gradient text.
+             • Secure-corner now also surfaces keyboard shortcuts (Esc / F / R / T).
+             • Badge gentle continuous shimmer.
+             • Display panel slide+scale-in transition.
+           ===================================================================== */
+        @keyframes pdfSlideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pdfFadeUp    { from { opacity: 0; transform: translateY(8px); }   to { opacity: 1; transform: translateY(0); } }
+        @keyframes pdfBadgeShimmer { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); } 50% { box-shadow: 0 0 14px -2px rgba(255,255,255,0.18); } }
+        @keyframes pdfStripGradient { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+        @keyframes pdfRingSpin1 { to { transform: rotate(360deg); } }
+        @keyframes pdfRingSpin2 { to { transform: rotate(-360deg); } }
+        @keyframes pdfCorePulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.18); opacity: 0.85; } }
+
+        /* Glassmorphic bar — overrides v1.6.31 solid gradient with translucent + blur */
+        .pdf-viewer-bar { background: rgba(11, 18, 32, 0.78);
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            backdrop-filter: blur(22px) saturate(180%);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            position: relative; }
+        .pdf-viewer-bar::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
+            background: linear-gradient(90deg, transparent 0%, rgba(96,165,250,0.45) 25%, rgba(52,211,153,0.45) 75%, transparent 100%);
+            pointer-events: none; }
+
+        /* Title gradient text + staggered entrance */
+        .pdf-viewer-bar h3 {
+            background: linear-gradient(135deg, #ffffff 0%, #93c5fd 55%, #6ee7b7 100%);
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent; color: transparent;
+        }
+        .pdf-viewer.active .pdf-viewer-bar-title-wrap { animation: pdfSlideDown 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .pdf-viewer.active .pdf-bar-actions            { animation: pdfSlideDown 0.55s 0.18s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .pdf-viewer.active .pdf-badges .pdf-badge:nth-child(1) { animation: pdfFadeUp 0.5s 0.10s cubic-bezier(0.16, 1, 0.3, 1) both, pdfBadgeShimmer 4.5s ease-in-out infinite; }
+        .pdf-viewer.active .pdf-badges .pdf-badge:nth-child(2) { animation: pdfFadeUp 0.5s 0.18s cubic-bezier(0.16, 1, 0.3, 1) both, pdfBadgeShimmer 4.5s 0.6s ease-in-out infinite; }
+        .pdf-viewer.active .pdf-badges .pdf-badge:nth-child(3) { animation: pdfFadeUp 0.5s 0.26s cubic-bezier(0.16, 1, 0.3, 1) both, pdfBadgeShimmer 4.5s 1.2s ease-in-out infinite; }
+
+        /* Premium button hover sweep — gradient swipes left-to-right on hover */
+        .pdf-viewer-bar .pdf-icon-btn { position: relative; overflow: hidden; }
+        .pdf-viewer-bar .pdf-icon-btn::before {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(120deg, transparent 25%, rgba(255,255,255,0.28) 50%, transparent 75%);
+            transform: translateX(-110%); transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+        }
+        .pdf-viewer-bar .pdf-icon-btn:hover::before { transform: translateX(110%); }
+        .pdf-viewer-bar .pdf-icon-btn:hover { box-shadow: 0 4px 14px rgba(96,165,250,0.25), 0 0 0 1px rgba(96,165,250,0.18); }
+        .pdf-viewer-bar .pdf-close-btn { position: relative; overflow: hidden; }
+        .pdf-viewer-bar .pdf-close-btn::before {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.22) 50%, transparent 70%);
+            transform: translateX(-110%); transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+        }
+        .pdf-viewer-bar .pdf-close-btn:hover::before { transform: translateX(110%); }
+
+        /* Multi-ring "shield" spinner — replaces .pdf-loading-spinner visually */
+        .pdf-elite-spinner { position: relative; width: 86px; height: 86px; display: inline-block; }
+        .pdf-elite-spinner .ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid transparent; }
+        .pdf-elite-spinner .ring-1 { border-top-color:    #60a5fa; border-right-color: rgba(96,165,250,0.25); animation: pdfRingSpin1 1.0s linear infinite; }
+        .pdf-elite-spinner .ring-2 { inset: 10px; border-bottom-color: #34d399; border-left-color: rgba(52,211,153,0.25); animation: pdfRingSpin2 1.5s linear infinite; }
+        .pdf-elite-spinner .ring-3 { inset: 20px; border-top-color:    #f472b6; border-right-color: rgba(244,114,182,0.25); animation: pdfRingSpin1 2.0s linear infinite; }
+        .pdf-elite-spinner .core   { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.55rem; animation: pdfCorePulse 1.6s ease-in-out infinite; }
+
+        /* Display popover — anchored top-right of stage, opens from the 🎨 button */
+        .pdf-display-panel { position: absolute; top: 12px; right: 14px; z-index: 13;
+            background: rgba(11, 18, 32, 0.92);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            backdrop-filter: blur(24px) saturate(180%);
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 14px;
+            padding: 0.95rem 1.05rem; min-width: 270px;
+            box-shadow: 0 18px 44px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
+            transform: translateY(-10px) scale(0.96); opacity: 0; pointer-events: none;
+            transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s ease;
+        }
+        .pdf-display-panel.active { transform: translateY(0) scale(1); opacity: 1; pointer-events: auto; }
+        .pdf-display-panel .display-section { margin-bottom: 0.85rem; }
+        .pdf-display-panel .display-section:last-child { margin-bottom: 0; }
+        .pdf-display-panel .display-label { display: flex; justify-content: space-between; align-items: center; font-size: 0.66rem; font-weight: 800; color: #cbd5e1; letter-spacing: 0.7px; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .pdf-display-panel .display-label .display-value { color: #60a5fa; font-weight: 800; font-variant-numeric: tabular-nums; font-size: 0.72rem; }
+        .pdf-display-panel .theme-pills { display: flex; gap: 0.35rem; }
+        .pdf-display-panel .theme-pills button { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #e2e8f0; padding: 0.5rem 0.4rem; border-radius: 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all 0.18s ease; font-family: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 0.25rem; }
+        .pdf-display-panel .theme-pills button:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.24); transform: translateY(-1px); }
+        .pdf-display-panel .theme-pills button.active { background: linear-gradient(135deg, #3b82f6, #10b981); border-color: transparent; color: #fff; box-shadow: 0 4px 14px rgba(59,130,246,0.38); }
+        .pdf-display-panel input[type=range] { width: 100%; height: 22px; -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; outline: none; margin: 0; }
+        .pdf-display-panel input[type=range]::-webkit-slider-runnable-track { height: 5px; background: linear-gradient(90deg, rgba(96,165,250,0.45), rgba(52,211,153,0.45)); border-radius: 999px; }
+        .pdf-display-panel input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #60a5fa, #34d399); margin-top: -7px; box-shadow: 0 3px 10px rgba(96,165,250,0.55), 0 0 0 3px rgba(255,255,255,0.08); border: none; transition: transform 0.15s ease; }
+        .pdf-display-panel input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+        .pdf-display-panel input[type=range]::-moz-range-track { height: 5px; background: rgba(255,255,255,0.18); border-radius: 999px; }
+        .pdf-display-panel input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #60a5fa, #34d399); border: none; box-shadow: 0 3px 10px rgba(96,165,250,0.55); }
+
+        /* Theme filters — browser-composited, work on cross-origin Drive iframe */
+        .pdf-viewer-frame.theme-light { filter: none; }
+        .pdf-viewer-frame.theme-sepia { filter: sepia(0.42) brightness(0.97) contrast(0.97) saturate(0.9); }
+        .pdf-viewer-frame.theme-dark  { filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.94); }
+        /* Stage background syncs with theme so loading/letterbox areas don't flash white */
+        .pdf-viewer-stage.theme-light { background: #1a1f2e; }
+        .pdf-viewer-stage.theme-sepia { background: #2a2418; }
+        .pdf-viewer-stage.theme-dark  { background: #07090d; }
+
+        /* Brightness overlay — sits above watermark (z:5), below corners/blockers (z:8) */
+        .pdf-brightness-overlay { position: absolute; inset: 0; z-index: 6; background: #000; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; }
+
+        /* Bottom-center info strip — animated gradient text inside a glass pill */
+        .pdf-bottom-strip { position: absolute; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 7;
+            background: rgba(11, 18, 32, 0.65);
+            -webkit-backdrop-filter: blur(12px) saturate(180%); backdrop-filter: blur(12px) saturate(180%);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 999px;
+            padding: 0.42rem 1.1rem; pointer-events: none; user-select: none;
+            box-shadow: 0 6px 22px rgba(0,0,0,0.4);
+            transition: opacity 0.4s ease, transform 0.4s ease; }
+        .pdf-bottom-strip.dimmed { opacity: 0; transform: translateX(-50%) translateY(8px); }
+        .pdf-bottom-strip .strip-text { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.6px;
+            background: linear-gradient(90deg, #93c5fd 0%, #6ee7b7 25%, #fcd34d 50%, #f9a8d4 75%, #93c5fd 100%);
+            background-size: 220% 100%;
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent; color: transparent;
+            animation: pdfStripGradient 5.5s linear infinite; }
+
+        /* Upgraded secure-corner: now also hosts keyboard shortcut hints */
+        .pdf-secure-corner .pdf-kbd-row { display: inline-flex; align-items: center; gap: 0.32rem; padding-left: 0.55rem; margin-left: 0.5rem; border-left: 1px solid rgba(255,255,255,0.16); }
+        .pdf-secure-corner .pdf-kbd-row kbd { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 0.06rem 0.34rem; border-radius: 4px;
+            font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 0.58rem; color: #f1f5f9; font-weight: 700; line-height: 1.3; }
+        .pdf-secure-corner .pdf-kbd-row .kbd-sep { opacity: 0.4; font-size: 0.62rem; }
+
+        @media (max-width: 700px) {
+            .pdf-secure-corner .pdf-kbd-row { display: none; } /* keep mobile lean */
+            .pdf-display-panel { right: 8px; left: 8px; min-width: 0; }
+            .pdf-bottom-strip  { font-size: 0.62rem; padding: 0.35rem 0.85rem; bottom: 0.65rem; }
+            .pdf-bottom-strip .strip-text { font-size: 0.62rem; letter-spacing: 0.4px; }
+            .pdf-elite-spinner { width: 72px; height: 72px; }
+        }
+        /* Honour reduced-motion users — disable shimmer + sweeps + heavy animations */
+        @media (prefers-reduced-motion: reduce) {
+            .pdf-viewer.active,
+            .pdf-viewer.active .pdf-viewer-bar-title-wrap,
+            .pdf-viewer.active .pdf-bar-actions,
+            .pdf-viewer.active .pdf-badges .pdf-badge,
+            .pdf-bottom-strip .strip-text,
+            .pdf-elite-spinner .ring,
+            .pdf-elite-spinner .core { animation: none !important; }
+            .pdf-viewer-bar .pdf-icon-btn::before,
+            .pdf-viewer-bar .pdf-close-btn::before { display: none; }
+        }
+
         /* ===== STUDENT DASHBOARD ===== */
         .dash-overlay { position: fixed; inset: 0; background: var(--gray-50); z-index: 7500; display: none; overflow-y: auto; }
         .dash-overlay.active { display: block; }
@@ -3940,7 +4096,7 @@
         </div>
     </div>
 
-    <!-- ===== SECURE PDF VIEWER — Elite Edition (v1.6.31) =====
+    <!-- ===== SECURE PDF VIEWER — Super Elite Edition (v1.6.32) =====
          Layered defenses (read top-to-bottom):
            1. Root has oncontextmenu/ondragstart/oncopy → return false so right-click,
               drag-to-save, and selection-copy are all blocked at the viewer boundary.
@@ -3951,8 +4107,13 @@
               the iframe's cross-origin toolbar buttons (Drive's download / new-tab
               icons). Cross-origin means we can't hide them — we just intercept the
               click.
-           4. Loading splash + load bar give Elite UX while the iframe boots.
-           5. Secure-corner badge is a passive, dimmable trust indicator. -->
+           4. Loading splash + load bar give Super Elite UX while the iframe boots.
+           5. Display popover (🎨) hosts theme + brightness — browser-composited
+              CSS filters apply themes WITHOUT touching the cross-origin Drive content.
+           6. Brightness overlay sits above the watermark (z:6) so dimming feels
+              uniform across the whole reading surface.
+           7. Bottom-center strip + secure-corner are passive trust indicators that
+              dim in step with focus-mode. -->
     <div class="pdf-viewer" id="pdfViewer" oncontextmenu="return false;" ondragstart="return false;" oncopy="return false;">
         <div class="pdf-viewer-bar" id="pdfViewerBar">
             <div class="pdf-viewer-bar-title-wrap">
@@ -3968,16 +4129,25 @@
                 </div>
             </div>
             <div class="pdf-bar-actions">
-                <button class="pdf-icon-btn" type="button" id="pdfReloadBtn" title="Reload document" aria-label="Reload document">&#x21BB;</button>
-                <button class="pdf-icon-btn" type="button" id="pdfFullscreenBtn" title="Toggle fullscreen" aria-label="Toggle fullscreen">&#x26F6;</button>
+                <button class="pdf-icon-btn" type="button" id="pdfDisplayBtn"    title="Display: theme &amp; brightness" aria-label="Display options" aria-haspopup="dialog" aria-expanded="false">&#x1F3A8;</button>
+                <button class="pdf-icon-btn" type="button" id="pdfReloadBtn"     title="Reload document (R)" aria-label="Reload document">&#x21BB;</button>
+                <button class="pdf-icon-btn" type="button" id="pdfFullscreenBtn" title="Toggle fullscreen (F)" aria-label="Toggle fullscreen">&#x26F6;</button>
                 <button class="pdf-close-btn" type="button" onclick="closeSecureViewer()" aria-label="Close secure viewer">&#x2715; Close</button>
             </div>
         </div>
-        <div class="pdf-viewer-stage">
+        <div class="pdf-viewer-stage" id="pdfViewerStage">
             <div class="pdf-load-bar" id="pdfLoadBar" aria-hidden="true"></div>
             <iframe class="pdf-viewer-frame" id="pdfViewerFrame" src="about:blank" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer" allow="autoplay" title="Secure course PDF viewer"></iframe>
+            <!-- Brightness overlay: opacity adjusted by the display panel slider -->
+            <div class="pdf-brightness-overlay" id="pdfBrightnessOverlay" aria-hidden="true"></div>
             <div class="pdf-loading-splash" id="pdfLoadingSplash">
-                <div class="pdf-loading-spinner" aria-hidden="true"></div>
+                <!-- Super Elite multi-ring shield spinner -->
+                <div class="pdf-elite-spinner" aria-hidden="true">
+                    <div class="ring ring-1"></div>
+                    <div class="ring ring-2"></div>
+                    <div class="ring ring-3"></div>
+                    <div class="core">&#x1F6E1;&#xFE0F;</div>
+                </div>
                 <div class="pdf-loading-text">Securing your document&hellip;</div>
                 <div class="pdf-loading-sub">DRM &middot; Watermark &middot; View-only</div>
             </div>
@@ -3985,7 +4155,39 @@
             <div class="pdf-popout-blocker" title="Pop-out is disabled for protected content" onclick="showToast('Pop-out and external open are disabled for protected content','warning')">PROTECTED</div>
             <div class="pdf-menu-blocker" onclick="event.stopPropagation()" aria-hidden="true"></div>
             <div class="pdf-fab-blocker" onclick="event.stopPropagation()" aria-hidden="true"></div>
-            <div class="pdf-secure-corner" id="pdfSecureCorner"><span class="pulse-dot" aria-hidden="true"></span>Secure session &middot; watermarked</div>
+
+            <!-- Display popover (theme + brightness). Opens from the 🎨 icon button. -->
+            <div class="pdf-display-panel" id="pdfDisplayPanel" role="dialog" aria-label="Display options">
+                <div class="display-section">
+                    <div class="display-label">Reading theme</div>
+                    <div class="theme-pills" role="group" aria-label="Reading theme">
+                        <button type="button" data-theme="light" aria-pressed="true">&#x2600;&#xFE0F; Light</button>
+                        <button type="button" data-theme="sepia" aria-pressed="false">&#x1F4DC; Sepia</button>
+                        <button type="button" data-theme="dark"  aria-pressed="false">&#x1F319; Dark</button>
+                    </div>
+                </div>
+                <div class="display-section">
+                    <div class="display-label">Brightness <span class="display-value" id="brightnessVal">100%</span></div>
+                    <input type="range" min="40" max="100" step="5" value="100" id="brightnessSlider" aria-label="Brightness">
+                </div>
+            </div>
+
+            <!-- Bottom-center info strip with animated gradient text -->
+            <div class="pdf-bottom-strip" id="pdfBottomStrip" aria-hidden="true">
+                <span class="strip-text">&#x1F6E1;&#xFE0F; Live &middot; Watermarked &middot; Secure Session &middot; End-to-End Protected</span>
+            </div>
+
+            <!-- Secure-corner: trust indicator + keyboard shortcut hints (desktop only) -->
+            <div class="pdf-secure-corner" id="pdfSecureCorner">
+                <span class="pulse-dot" aria-hidden="true"></span>Secure &middot; watermarked
+                <span class="pdf-kbd-row" aria-hidden="true">
+                    <kbd>Esc</kbd> close <span class="kbd-sep">&middot;</span>
+                    <kbd>F</kbd> screen <span class="kbd-sep">&middot;</span>
+                    <kbd>R</kbd> reload <span class="kbd-sep">&middot;</span>
+                    <kbd>T</kbd> theme
+                </span>
+            </div>
+
             <div class="pdf-blocker" id="pdfBlocker"><div style="font-size:3rem;">&#x1F512;</div><div>Screenshot detected &mdash; content hidden</div><button class="btn btn-outline" onclick="document.getElementById('pdfBlocker').classList.remove('active')" style="color:#fff;border-color:#fff;">Resume</button></div>
         </div>
     </div>
@@ -5682,7 +5884,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.31';
+    const APP_VERSION = '1.6.32';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -9080,7 +9282,7 @@
         } catch(e){ console.error('fetchMyOrders exception:',e); APP.myOrders=[]; }
     }
 
-    // ===== SECURE PDF VIEWER (DRM-LITE) — Elite Edition v1.6.31 =====
+    // ===== SECURE PDF VIEWER (DRM-LITE) — Super Elite Edition v1.6.32 =====
     // Viewer state tracks the active session: which course is open, when it started,
     // and the interval timers driving watermark refresh + reading-time display.
     const Viewer = { courseId:null, title:null, startedAt:0, timer:null, lastProgressBump:0 };
@@ -9089,6 +9291,20 @@
     let _readingTimer = null;
     let _focusModeTimer = null;
     let _viewerMouseHandler = null;
+    let _displayOutsideHandler = null;
+    // Reading-time achievement milestones — fire a celebratory toast at each threshold.
+    // Reset on every viewer open so a fresh session doesn't fire stale achievements.
+    const READING_MILESTONES = [
+        { sec:  5*60, emoji: '\u{1F3AF}', text: '5 minutes of focused reading — keep going!' },
+        { sec: 10*60, emoji: '\u{2B50}',  text: '10 minutes in the zone — great focus!' },
+        { sec: 15*60, emoji: '\u{1F525}', text: '15 minutes deep work — unstoppable!' },
+        { sec: 30*60, emoji: '\u{1F3C6}', text: '30 minutes of elite study — incredible discipline!' },
+        { sec: 60*60, emoji: '\u{1F451}', text: '1 hour of mastery — you are a champion!' }
+    ];
+    let _hitMilestones = new Set();
+    // localStorage keys for theme + brightness persistence
+    const PDF_THEME_KEY  = 'hiq_pdf_theme';
+    const PDF_BRIGHT_KEY = 'hiq_pdf_brightness';
 
     function getDrivePreviewUrl(url){
         if(!url) return '';
@@ -9123,7 +9339,7 @@
         tile.innerHTML = rows.join('');
     }
 
-    // ---------- Elite Viewer Helpers ----------
+    // ---------- Super Elite Viewer Helpers ----------
     function pdfFmtMMSS(sec){
         sec = Math.max(0, Math.floor(sec));
         const m = Math.floor(sec / 60);
@@ -9132,18 +9348,33 @@
     }
     function pdfUpdateReadingTimer(){
         if(!Viewer.startedAt) return;
+        const elapsed = Math.floor((Date.now() - Viewer.startedAt) / 1000);
         const el = document.getElementById('pdfViewerTimer');
-        if(el) el.textContent = pdfFmtMMSS((Date.now() - Viewer.startedAt) / 1000);
+        if(el) el.textContent = pdfFmtMMSS(elapsed);
+        // Achievement toasts — fire once per threshold per session.
+        for(const m of READING_MILESTONES){
+            if(elapsed >= m.sec && !_hitMilestones.has(m.sec)){
+                _hitMilestones.add(m.sec);
+                try { showToast(m.emoji + ' ' + m.text, 'success'); } catch(_) {}
+                pdfHaptic(); // subtle celebratory buzz on mobile
+            }
+        }
+    }
+    // Subtle mobile haptic feedback — no-op on desktop / browsers without the API.
+    function pdfHaptic(ms){
+        try { if(navigator.vibrate) navigator.vibrate(ms || 10); } catch(_) {}
     }
     function pdfShowChrome(){
-        // Reveal the header + corner badge and re-arm the auto-dim timer.
+        // Reveal the header + corner badge + bottom strip and re-arm the auto-dim timer.
         document.getElementById('pdfViewerBar')?.classList.remove('dimmed');
         document.getElementById('pdfSecureCorner')?.classList.remove('dimmed');
+        document.getElementById('pdfBottomStrip')?.classList.remove('dimmed');
         if(_focusModeTimer) clearTimeout(_focusModeTimer);
         _focusModeTimer = setTimeout(() => {
             if(!document.getElementById('pdfViewer')?.classList.contains('active')) return;
             document.getElementById('pdfViewerBar')?.classList.add('dimmed');
             document.getElementById('pdfSecureCorner')?.classList.add('dimmed');
+            document.getElementById('pdfBottomStrip')?.classList.add('dimmed');
         }, 5500);
     }
     function pdfTogglePdfFullscreen(){
@@ -9170,6 +9401,53 @@
         f.src = 'about:blank';
         // Brief tick so the browser realises the navigation, then re-arm the same URL.
         setTimeout(() => { f.src = url; }, 100);
+    }
+    // Apply a reading theme. Browser-composited CSS filter on the iframe element works
+    // even though Drive's content is cross-origin — the filter is applied post-render.
+    // Stage background also swaps so letterbox / loading areas don't flash white.
+    function pdfApplyTheme(theme){
+        if(!['light','sepia','dark'].includes(theme)) theme = 'light';
+        const frame = document.getElementById('pdfViewerFrame');
+        const stage = document.getElementById('pdfViewerStage');
+        ['theme-light','theme-sepia','theme-dark'].forEach(c => {
+            frame?.classList.remove(c);
+            stage?.classList.remove(c);
+        });
+        frame?.classList.add('theme-' + theme);
+        stage?.classList.add('theme-' + theme);
+        document.querySelectorAll('.pdf-display-panel .theme-pills button').forEach(b => {
+            const active = b.dataset.theme === theme;
+            b.classList.toggle('active', active);
+            b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        try { localStorage.setItem(PDF_THEME_KEY, theme); } catch(_) {}
+    }
+    // Adjust brightness via an overlay opacity (0% slider → 60% black overlay, 100% → 0% overlay).
+    function pdfApplyBrightness(pct){
+        pct = Math.max(40, Math.min(100, Number(pct) || 100));
+        const overlay = document.getElementById('pdfBrightnessOverlay');
+        if(overlay) overlay.style.opacity = String((100 - pct) / 100 * 0.6);
+        const label = document.getElementById('brightnessVal');
+        if(label) label.textContent = pct + '%';
+        const slider = document.getElementById('brightnessSlider');
+        if(slider && Number(slider.value) !== pct) slider.value = pct;
+        try { localStorage.setItem(PDF_BRIGHT_KEY, String(pct)); } catch(_) {}
+    }
+    // Cycle theme: light → sepia → dark → light. Bound to the `T` shortcut.
+    function pdfCycleTheme(){
+        const order = ['light','sepia','dark'];
+        const frame = document.getElementById('pdfViewerFrame');
+        const cur = order.find(t => frame?.classList.contains('theme-'+t)) || 'light';
+        pdfApplyTheme(order[(order.indexOf(cur) + 1) % order.length]);
+    }
+    // Toggle the display popover. Idempotent + click-outside aware.
+    function pdfToggleDisplayPanel(force){
+        const panel = document.getElementById('pdfDisplayPanel');
+        const btn   = document.getElementById('pdfDisplayBtn');
+        if(!panel) return;
+        const willOpen = (typeof force === 'boolean') ? force : !panel.classList.contains('active');
+        panel.classList.toggle('active', willOpen);
+        btn?.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
     }
 
     async function openSecureViewer(courseId, pdfUrl, title){
@@ -9230,9 +9508,41 @@
 
         // Wire the new icon buttons (idempotent — onclick replaces any prior handler).
         const reloadBtn = document.getElementById('pdfReloadBtn');
-        if(reloadBtn) reloadBtn.onclick = pdfReloadFrame;
+        if(reloadBtn) reloadBtn.onclick = () => { pdfHaptic(); pdfReloadFrame(); };
         const fsBtn = document.getElementById('pdfFullscreenBtn');
-        if(fsBtn) fsBtn.onclick = pdfTogglePdfFullscreen;
+        if(fsBtn) fsBtn.onclick = () => { pdfHaptic(); pdfTogglePdfFullscreen(); };
+        const displayBtn = document.getElementById('pdfDisplayBtn');
+        if(displayBtn) displayBtn.onclick = (e) => { e.stopPropagation(); pdfHaptic(); pdfToggleDisplayPanel(); };
+
+        // Theme pills + brightness slider — wired idempotently per open so a fresh
+        // DOM (after a hard refresh) still gets handlers without leaking listeners.
+        document.querySelectorAll('.pdf-display-panel .theme-pills button').forEach(btn => {
+            btn.onclick = (e) => { e.stopPropagation(); pdfHaptic(); pdfApplyTheme(btn.dataset.theme); };
+        });
+        const slider = document.getElementById('brightnessSlider');
+        if(slider) slider.oninput = (e) => pdfApplyBrightness(e.target.value);
+
+        // Restore saved theme + brightness from localStorage (defaults: light @ 100%).
+        let savedTheme = 'light', savedBright = 100;
+        try { savedTheme  = localStorage.getItem(PDF_THEME_KEY)  || 'light'; } catch(_) {}
+        try { savedBright = parseInt(localStorage.getItem(PDF_BRIGHT_KEY) || '100', 10) || 100; } catch(_) {}
+        pdfApplyTheme(savedTheme);
+        pdfApplyBrightness(savedBright);
+        // Reset milestone tracking so the new session can re-trigger achievements.
+        _hitMilestones.clear();
+
+        // Click-outside the display panel closes it. Wired ONCE per app lifetime —
+        // re-opening the viewer doesn't stack listeners (the null-guard ensures it).
+        if(!_displayOutsideHandler){
+            _displayOutsideHandler = (e) => {
+                const panel = document.getElementById('pdfDisplayPanel');
+                if(!panel?.classList.contains('active')) return;
+                const btn = document.getElementById('pdfDisplayBtn');
+                if(panel.contains(e.target) || btn?.contains(e.target)) return;
+                pdfToggleDisplayPanel(false);
+            };
+            document.addEventListener('click', _displayOutsideHandler, true);
+        }
 
         // Log view start
         logCourseView(courseId, 'open', 0);
@@ -9253,15 +9563,19 @@
                 if(exit) exit.call(document).catch(()=>{});
             }
         } catch(_) {}
+        // Close the display panel so a re-open doesn't show it half-faded.
+        pdfToggleDisplayPanel(false);
         Overlay.close('pdfViewer');
         document.getElementById('pdfViewerFrame').src = 'about:blank';
         // Reset dim state so the next open starts with a fully visible chrome.
         document.getElementById('pdfViewerBar')?.classList.remove('dimmed');
         document.getElementById('pdfSecureCorner')?.classList.remove('dimmed');
+        document.getElementById('pdfBottomStrip')?.classList.remove('dimmed');
         // Reset splash so the next open shows it again (otherwise stale `.done` persists).
         document.getElementById('pdfLoadingSplash')?.classList.remove('done');
         document.getElementById('pdfLoadBar')?.classList.remove('done');
         Viewer.courseId=null; Viewer.title=null; Viewer.startedAt=0;
+        _hitMilestones.clear();
         // Refresh dashboard data if open
         if(document.getElementById('dashboardOverlay').classList.contains('active')) renderDashboard();
     }
@@ -9309,6 +9623,17 @@
             // v1.6.31 — Escape closes the viewer cleanly (was previously routed through Overlay's
             // generic Escape, which fired but also called Overlay.close without our timer cleanup).
             if(e.key === 'Escape'){ e.preventDefault(); closeSecureViewer(); }
+            // v1.6.32 — Single-key power shortcuts (F fullscreen, R reload, T cycle theme).
+            // Skipped when the focused element is an editable field so we don't hijack
+            // typing in any future inline UI (Drive's cross-origin iframe is unreachable
+            // via our listener anyway — keys typed inside the PDF stay inside the PDF).
+            const tgt = e.target;
+            const isEditable = tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable);
+            if(!isEditable && !e.ctrlKey && !e.metaKey && !e.altKey){
+                if(k === 'f'){ e.preventDefault(); pdfTogglePdfFullscreen(); }
+                else if(k === 'r'){ e.preventDefault(); pdfReloadFrame(); }
+                else if(k === 't'){ e.preventDefault(); pdfCycleTheme(); }
+            }
         }, true);
 
         // v1.6.31 — Block copy / cut anywhere while the viewer is open. The iframe is
