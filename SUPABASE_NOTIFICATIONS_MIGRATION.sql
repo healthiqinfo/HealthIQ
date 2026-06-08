@@ -33,6 +33,21 @@
 --  except our required set (id, type, title) and drops the NOT
 --  NULL constraint. Columns are NOT removed so any legacy reader
 --  still works — they just become optional from now on.
+--
+--  v1.6.28 update: drop legacy CHECK constraints. After v1.6.27
+--  cleared the NULL-column blocker, admins hit a third generation
+--  of the same issue:
+--    "new row for relation 'notifications' violates check
+--     constraint 'notifications_type_check'"
+--  Legacy tables ship with a CHECK like
+--    CHECK (type IN ('info','warning','success','error'))
+--  which rejects our 'payment_approved' / 'payment_declined'
+--  values. Section 2c enumerates every CHECK constraint on the
+--  table (pg_constraint.contype='c') and drops it. We do NOT
+--  re-add a CHECK — the app validates `type` client-side, and
+--  every time we add a new notification type a DB-side enum has
+--  to be re-migrated. Section 5 diagnostic was extended to also
+--  list any remaining CHECK constraints.
 -- ============================================================
 
 -- ------------------------------------------------------------
@@ -182,6 +197,59 @@ BEGIN
 END
 $$;
 
+-- ------------------------------------------------------------
+-- 2c. v1.6.28 — Drop legacy CHECK constraints on notifications.
+--     Same problem class as section 2b. Some pre-existing
+--     `notifications` tables ship with a CHECK constraint on
+--     `type` that only allows a narrow legacy enum, e.g.:
+--       CONSTRAINT notifications_type_check
+--         CHECK (type IN ('info','warning','success','error'))
+--     Our app writes values like 'payment_approved' and
+--     'payment_declined' which aren't in that legacy list, so
+--     every INSERT trips:
+--       "new row for relation 'notifications' violates check
+--        constraint 'notifications_type_check'"
+--     This block enumerates every CHECK constraint on
+--     public.notifications (pg_constraint.contype = 'c') and
+--     drops them. We don't re-add our own CHECK because the
+--     app already validates `type` client-side, and locking the
+--     allowed list in the DB has bitten us twice now whenever
+--     we add a new notification type.
+--
+--     NOTE: We deliberately do NOT touch FOREIGN KEY, UNIQUE,
+--     or PRIMARY KEY constraints — only contype='c' (CHECK).
+--     Safe to re-run: if no CHECK constraints exist the loop
+--     is a no-op.
+-- ------------------------------------------------------------
+DO $$
+DECLARE
+    r RECORD;
+    dropped_count int := 0;
+BEGIN
+    FOR r IN
+        SELECT con.conname
+        FROM pg_constraint con
+        JOIN pg_class      rel ON rel.oid = con.conrelid
+        JOIN pg_namespace  nsp ON nsp.oid = rel.relnamespace
+        WHERE nsp.nspname = 'public'
+          AND rel.relname = 'notifications'
+          AND con.contype = 'c'   -- 'c' = CHECK constraint
+    LOOP
+        EXECUTE format(
+            'ALTER TABLE public.notifications DROP CONSTRAINT %I',
+            r.conname
+        );
+        RAISE NOTICE 'Dropped legacy CHECK constraint % on public.notifications', r.conname;
+        dropped_count := dropped_count + 1;
+    END LOOP;
+    IF dropped_count = 0 THEN
+        RAISE NOTICE 'No legacy CHECK constraints on notifications — schema already clean.';
+    ELSE
+        RAISE NOTICE 'Dropped % legacy CHECK constraint(s). INSERTs with custom `type` values will now succeed.', dropped_count;
+    END IF;
+END
+$$;
+
 -- Hot-path index: the dropdown query is "my unread notifications, newest first".
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
     ON public.notifications (user_id, is_read, created_at DESC);
@@ -323,3 +391,20 @@ FROM information_schema.columns
 WHERE table_schema = 'public'
   AND table_name   = 'notifications'
 ORDER BY ordinal_position;
+
+-- ------------------------------------------------------------
+-- 5b. v1.6.28 — Diagnostic: list any remaining CHECK constraints
+--     on notifications. After running this migration the result
+--     should be ZERO rows. If any row appears, the constraint
+--     name + definition tells you exactly which legacy rule is
+--     still blocking INSERTs.
+-- ------------------------------------------------------------
+SELECT con.conname        AS constraint_name,
+       pg_get_constraintdef(con.oid) AS definition,
+       '⚠ legacy CHECK — drop it or update app `type` values' AS health
+FROM pg_constraint con
+JOIN pg_class      rel ON rel.oid = con.conrelid
+JOIN pg_namespace  nsp ON nsp.oid = rel.relnamespace
+WHERE nsp.nspname = 'public'
+  AND rel.relname = 'notifications'
+  AND con.contype = 'c';

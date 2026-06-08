@@ -1,37 +1,40 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.27 — Migration hotfix #2: relax legacy NOT NULL columns.
-   * Problem: after running the v1.6.26 migration, admins now hit
-     a NEW error on approve/decline:
-       "null value in column 'message' of relation 'notifications'
-        violates not-null constraint"
-     Root cause: their pre-existing `notifications` table (created
-     by an older HealthIQ shape OR a totally unrelated app sharing
-     the project) carries extra mandatory columns like `message
-     TEXT NOT NULL`. Our v1.6.20+ INSERT only sets the columns
-     defined in the migration's section 2 (id, user_id, type,
-     title, body, metadata, is_read, created_at). Any legacy
-     NOT NULL column outside that set stays NULL on every INSERT
-     and trips the constraint.
+   v1.6.28 — Migration hotfix #3: drop legacy CHECK constraints.
+   * Problem: after v1.6.27 cleared the legacy NOT NULL columns,
+     admins now hit a THIRD generation of the same problem:
+       "new row for relation 'notifications' violates check
+        constraint 'notifications_type_check'"
+     Their pre-existing notifications table ships with a CHECK
+     constraint that only allows a narrow legacy enum like
+       CHECK (type IN ('info','warning','success','error'))
+     which rejects our app's 'payment_approved' /
+     'payment_declined' values on every INSERT.
    * Fix (SUPABASE_NOTIFICATIONS_MIGRATION.sql only — no JS change):
-     1. New section 2b: a DO block that queries
-        information_schema.columns for every column on
-        public.notifications where is_nullable='NO' AND
-        column_name NOT IN ('id','type','title'), then runs
-          ALTER TABLE public.notifications
-            ALTER COLUMN <col> DROP NOT NULL
-        on each one. Columns are NOT dropped — any legacy reader
-        still gets the data — they just become optional going
-        forward. RAISE NOTICE prints each column it touched and
-        a summary count.
-     2. New section 5: a diagnostic SELECT that lists every
-        column on notifications with its data_type, is_nullable,
-        default, and a `health` column flagging any remaining
-        legacy NOT NULL. Run it any time to triage a future
-        "it broke again" report.
-   * Why this matters: v1.6.26 made the migration idempotent for
-     MISSING columns. v1.6.27 makes it idempotent for SURPLUS
-     NOT NULL columns. Together, the migration now self-heals
-     against virtually any pre-existing schema drift.
+     1. New section 2c: a DO block that enumerates every CHECK
+        constraint on public.notifications (pg_constraint.contype
+        = 'c') and drops them with ALTER TABLE ... DROP CONSTRAINT.
+        We deliberately do NOT touch FOREIGN KEY, UNIQUE, or
+        PRIMARY KEY constraints — only CHECK. RAISE NOTICE prints
+        each constraint name it dropped.
+     2. We do NOT re-add our own CHECK on `type`. The app already
+        validates type values client-side, and a DB-side enum has
+        bitten us twice now — every time we add a new notification
+        type (e.g. 'order_update', 'course_completed') someone
+        would have to re-migrate. The app is the source of truth
+        for which type values exist.
+     3. New section 5b: a diagnostic SELECT that lists any
+        remaining CHECK constraints on notifications with their
+        full definitions. After running the migration this should
+        return zero rows; if not, the output tells admin exactly
+        which legacy rule is still blocking INSERTs.
+   * Why this matters: v1.6.26 fixed MISSING columns. v1.6.27
+     fixed SURPLUS NOT NULL columns. v1.6.28 fixes SURPLUS CHECK
+     constraints. Together the migration now self-heals against
+     every form of legacy schema drift we've seen on
+     public.notifications.
+   Carries forward from v1.6.27:
+   * Section 2b — relax legacy NOT NULL columns.
+   * Section 5 — diagnostic shape listing.
    Carries forward from v1.6.26:
    * ALTER TABLE ADD COLUMN IF NOT EXISTS for every column.
    * NOTIFY pgrst 'reload schema' to refresh PostgREST cache.
@@ -39,7 +42,7 @@
    * Realtime + 45s poll fallback for student notifications.
    * Loud toasts on admin INSERT failures.
    * Dual-admin RLS on notifications. */
-const VERSION = 'hiq-v1.6.27';
+const VERSION = 'hiq-v1.6.28';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
