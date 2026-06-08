@@ -209,13 +209,43 @@ Deno.serve(async (req: Request) => {
             return jsonResponse({ error: "Invalid or expired session" }, 401);
         }
 
-        const { data: profile, error: profileErr } = await supabase
+        // ─── 1b. Admin-role check ─────────────────────────────
+        // Two acceptable paths to admin (mirrors the client logic in
+        // hydrateUserFromSession): (a) profiles.role === 'admin', or
+        // (b) the user is the bootstrap admin email. The fallback exists
+        // because brand-new Supabase projects often lack a profiles row
+        // until the first manual run, which would otherwise lock the
+        // founding admin out of their own Edge Functions.
+        const ADMIN_EMAIL_FALLBACK = "thehealthiqinfo@gmail.com";
+        let isAdmin = false;
+        let profileRole: string | null = null;
+        const { data: profile } = await supabase
             .from("profiles")
             .select("role")
             .eq("id", userData.user.id)
-            .single();
-        if (profileErr || profile?.role !== "admin") {
-            return jsonResponse({ error: "Admin role required" }, 403);
+            .maybeSingle();
+        profileRole = profile?.role ?? null;
+        if (profileRole === "admin") {
+            isAdmin = true;
+        } else if (
+            (userData.user.email || "").toLowerCase() === ADMIN_EMAIL_FALLBACK.toLowerCase()
+        ) {
+            isAdmin = true;
+        }
+        if (!isAdmin) {
+            return jsonResponse(
+                {
+                    error: "Admin role required",
+                    debug: {
+                        user_email: userData.user.email,
+                        profile_role: profileRole,
+                        hint: profileRole
+                            ? `Your profile has role='${profileRole}'. Run the SQL fix in the dashboard to set it to 'admin'.`
+                            : "No profiles row found for your user. Run the SQL fix to create one with role='admin'.",
+                    },
+                },
+                403,
+            );
         }
 
         // ─── 2. Validate payload ────────────────────────────────
