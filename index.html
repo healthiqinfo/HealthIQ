@@ -5197,7 +5197,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.17';
+    const APP_VERSION = '1.6.18';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -5921,7 +5921,21 @@
         if(!isSupabaseConfigured()){showToast('Service unavailable','error');return;}
         const btn=document.getElementById('registerBtn'); btn.classList.add('btn-loading'); btn.disabled=true;
         try {
-            const {data,error}=await db.auth.signUp({email:em,password:pw,options:{data:{full_name:fn+' '+ln,first_name:fn,last_name:ln,username:un}}}); if(error)throw error;
+            // v1.6.18 — Explicit emailRedirectTo overrides any stale Site URL in
+            // the Supabase Dashboard (the root cause of the localhost:3000
+            // redirect bug). For this to actually take effect, the same origin
+            // MUST be added to Dashboard → Authentication → URL Configuration
+            // → Redirect URLs (allow-list), otherwise Supabase falls back to
+            // the Site URL setting which may still be localhost.
+            const redirectTo = window.location.origin + window.location.pathname;
+            const {data,error}=await db.auth.signUp({
+                email:em,
+                password:pw,
+                options:{
+                    emailRedirectTo: redirectTo,
+                    data:{full_name:fn+' '+ln,first_name:fn,last_name:ln,username:un}
+                }
+            }); if(error)throw error;
             if(data.user&&data.session){
                 // Poll briefly for the profile row created by the DB trigger
                 // (replaces brittle setTimeout(800ms) — handles slow triggers + retries).
@@ -5937,8 +5951,29 @@
                 showToast('Account created! Welcome!');
             }
             else{closeModal('register');
+                // v1.6.18 — Verify modal now includes a Resend button so users
+                // who never received the email (typo, spam filter, deliverability
+                // issue) can request a fresh link without re-typing their full
+                // registration. Escapes the email properly for the inline JS.
+                const safeEmail = em.replace(/'/g, "\\'");
                 let m=document.getElementById('verifyModal'); if(!m){m=document.createElement('div');m.id='verifyModal';m.className='modal-overlay';document.body.appendChild(m);}
-                m.innerHTML='<div class="modal" style="max-width:420px;text-align:center;"><button class="modal-close" onclick="document.getElementById(\'verifyModal\').classList.remove(\'active\')">&times;</button><div style="font-size:3rem;margin-bottom:1rem;">📧</div><h2 style="font-size:1.3rem;">Check Your Email</h2><p style="color:var(--gray-600);margin:1rem 0;">We sent a verification link to <strong>'+Utils.escapeHtml(em)+'</strong>. Please click the link in your email to activate your account.</p><p style="color:var(--gray-600);font-size:0.85rem;">Didn\'t receive it? Check your spam folder or try registering again.</p><button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:1.5rem;" onclick="document.getElementById(\'verifyModal\').classList.remove(\'active\')">Got it!</button></div>';
+                m.innerHTML=''
+                    + '<div class="modal" style="max-width:440px;text-align:center;">'
+                    +   '<button class="modal-close" onclick="document.getElementById(\'verifyModal\').classList.remove(\'active\')" aria-label="Close">&times;</button>'
+                    +   '<div style="font-size:3rem;margin-bottom:1rem;">📧</div>'
+                    +   '<h2 style="font-size:1.3rem;margin:0 0 0.5rem;">Check Your Email</h2>'
+                    +   '<p style="color:var(--gray-600);margin:0.5rem 0 1rem;">We sent a verification link to <strong>'+Utils.escapeHtml(em)+'</strong>. Please click the link within <strong>1 hour</strong> to activate your account.</p>'
+                    +   '<div style="background:var(--gray-50,#f9fafb);padding:0.85rem 1rem;border-radius:8px;text-align:left;font-size:0.82rem;color:var(--gray-700);line-height:1.55;margin:1rem 0;">'
+                    +     '<strong>Tips:</strong>'
+                    +     '<ul style="margin:0.4rem 0 0;padding-left:1.1rem;">'
+                    +       '<li>Check your spam / promotions folder</li>'
+                    +       '<li>The link expires after 1 hour</li>'
+                    +       '<li>Each link can only be used once</li>'
+                    +     '</ul>'
+                    +   '</div>'
+                    +   '<button class="btn btn-outline" style="width:100%;justify-content:center;margin-top:0.5rem;" onclick="resendConfirmation(\''+safeEmail+'\')">🔁 Resend Confirmation Email</button>'
+                    +   '<button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:0.5rem;" onclick="document.getElementById(\'verifyModal\').classList.remove(\'active\')">Got it!</button>'
+                    + '</div>';
                 m.classList.add('active');}
         } catch(e){showToast(e.message||'Registration failed','error');} finally{btn.classList.remove('btn-loading');btn.disabled=false;}
     }
@@ -7397,6 +7432,133 @@
     // ===== NAVBAR SCROLL SHADOW =====
     window.addEventListener('scroll', () => { document.querySelector('.navbar').classList.toggle('scrolled', window.scrollY > 20); }, { passive: true });
 
+    // ===== v1.6.18 — SUPABASE AUTH ERROR HASH RECOVERY =====
+    // Supabase redirects auth callbacks (email confirmations, password resets,
+    // magic links) to the configured Site URL with either:
+    //   SUCCESS:  #access_token=...&token_type=bearer&...
+    //   FAILURE:  #error=access_denied&error_code=otp_expired&error_description=...
+    // The success path is handled by the supabase-js SDK itself. The failure
+    // path used to just sit in the URL hash as an opaque error — leaving the
+    // user looking at the homepage with no clue what went wrong. This handler
+    // detects the failure pattern, shows a friendly recovery modal, and offers
+    // a one-click "Resend confirmation email" so the user is unblocked.
+    //
+    // ROOT CAUSE: the link the user is reporting points to localhost:3000.
+    // That URL is set in Supabase Dashboard → Authentication → URL Configuration
+    // → Site URL. While the project was being developed locally it was
+    // 'localhost:3000'; in production it must be the live site URL. THIS HANDLER
+    // CAN'T FIX THE EMAIL — only the admin can update Site URL — but it ensures
+    // that ONCE the admin fixes the dashboard, expired/used links recover well.
+    function parseAuthHash(hash) {
+        if (!hash || hash.length < 2) return null;
+        // Hash usually starts with '#'; sometimes Supabase appends '&sb='
+        const params = new URLSearchParams(hash.replace(/^#/, ''));
+        const err = params.get('error');
+        const errCode = params.get('error_code');
+        const errDesc = params.get('error_description');
+        const access = params.get('access_token');
+        if (access) return { kind: 'success', accessToken: access };
+        if (err || errCode || errDesc) {
+            return {
+                kind: 'error',
+                error: err || 'unknown',
+                code: errCode || 'unknown',
+                description: (errDesc || '').replace(/\+/g, ' '),
+            };
+        }
+        return null;
+    }
+
+    async function resendConfirmation(email) {
+        if (!isSupabaseConfigured()) { showToast('Service unavailable', 'error'); return false; }
+        const clean = String(email || '').trim().toLowerCase();
+        if (!clean || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+            showToast('Please enter a valid email address.', 'warning');
+            return false;
+        }
+        try {
+            // emailRedirectTo forces Supabase to use OUR page URL in the link
+            // (overriding the Dashboard Site URL setting if it's still wrong).
+            // The redirect URL must still be in the Dashboard's "Redirect URLs"
+            // allow-list or Supabase will refuse to honour it.
+            const { error } = await db.auth.resend({
+                type: 'signup',
+                email: clean,
+                options: { emailRedirectTo: window.location.origin + window.location.pathname }
+            });
+            if (error) throw error;
+            showToast('New confirmation email sent to ' + clean + ' — check your inbox (and spam folder).', 'success', { duration: 6000 });
+            return true;
+        } catch (e) {
+            console.error('[resendConfirmation] failed:', e);
+            const msg = (e && e.message) || 'Failed to resend confirmation email';
+            showToast(msg, 'error', { duration: 6000 });
+            return false;
+        }
+    }
+
+    function showAuthRecoveryModal(parsed) {
+        // Clean the hash from the URL FIRST so a refresh doesn't replay this
+        // modal and so the URL bar stops showing the alarming error string.
+        try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (_) {}
+
+        const esc = Utils.escapeHtml;
+        // Custom messaging per error code — keep it human, with a clear next step.
+        let title, body;
+        if (parsed.code === 'otp_expired' || /expired/i.test(parsed.description)) {
+            title = '⏳ This confirmation link has expired';
+            body = 'Email confirmation links are valid for 1 hour. The link you clicked has either expired or was already used.';
+        } else if (/invalid/i.test(parsed.description)) {
+            title = '🔗 This link is no longer valid';
+            body = 'This sign-up link can no longer be used — it may have already activated your account, or expired.';
+        } else if (parsed.error === 'access_denied') {
+            title = '🚫 Access denied';
+            body = 'We couldn\'t complete that authentication step. Try requesting a fresh email below.';
+        } else {
+            title = '⚠️ Authentication problem';
+            body = parsed.description || 'Something went wrong with the email link. Request a fresh one below.';
+        }
+
+        let m = document.getElementById('authRecoveryModal');
+        if (!m) { m = document.createElement('div'); m.id = 'authRecoveryModal'; m.className = 'modal-overlay'; document.body.appendChild(m); }
+        m.innerHTML = ''
+            + '<div class="modal" style="max-width:460px;">'
+            +   '<button class="modal-close" onclick="document.getElementById(\'authRecoveryModal\').classList.remove(\'active\')" aria-label="Close">&times;</button>'
+            +   '<div style="text-align:center;margin-bottom:1rem;">'
+            +     '<h2 style="font-size:1.25rem;margin:0 0 0.5rem;">' + esc(title) + '</h2>'
+            +     '<p style="color:var(--gray-600);font-size:0.92rem;margin:0;">' + esc(body) + '</p>'
+            +   '</div>'
+            +   '<div style="background:var(--gray-50,#f9fafb);padding:1rem;border-radius:8px;margin:1rem 0;">'
+            +     '<label for="authRecoveryEmail" style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;color:var(--gray-700);">Your email address</label>'
+            +     '<input type="email" id="authRecoveryEmail" placeholder="you@example.com" style="width:100%;padding:0.6rem 0.8rem;border:1px solid var(--gray-300,#d1d5db);border-radius:6px;font-size:0.95rem;" autocomplete="email">'
+            +     '<button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:0.75rem;" onclick="(async()=>{const v=document.getElementById(\'authRecoveryEmail\').value;const ok=await resendConfirmation(v);if(ok)document.getElementById(\'authRecoveryModal\').classList.remove(\'active\');})()">📧 Resend Confirmation Email</button>'
+            +   '</div>'
+            +   '<details style="margin-top:0.75rem;font-size:0.8rem;color:var(--gray-500);">'
+            +     '<summary style="cursor:pointer;">Already activated? Try signing in</summary>'
+            +     '<button class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:0.5rem;" onclick="document.getElementById(\'authRecoveryModal\').classList.remove(\'active\');openModal(\'login\');">Go to Sign In</button>'
+            +   '</details>'
+            +   '<details style="margin-top:0.5rem;font-size:0.75rem;color:var(--gray-400);">'
+            +     '<summary style="cursor:pointer;">Technical details</summary>'
+            +     '<pre style="margin:0.4rem 0 0;padding:0.5rem;background:var(--gray-100,#f3f4f6);border-radius:4px;font-size:0.7rem;overflow-x:auto;">error: ' + esc(parsed.error) + '\ncode: ' + esc(parsed.code) + '\ndesc: ' + esc(parsed.description) + '</pre>'
+            +   '</details>'
+            + '</div>';
+        m.classList.add('active');
+        // Pre-fill email if we know who's logged in (rare on this path, but defensive)
+        setTimeout(() => {
+            const inp = document.getElementById('authRecoveryEmail');
+            if (inp && APP.currentUser && APP.currentUser.email) inp.value = APP.currentUser.email;
+            if (inp) inp.focus();
+        }, 50);
+    }
+
+    function handleAuthHashErrors() {
+        const parsed = parseAuthHash(window.location.hash || '');
+        if (!parsed || parsed.kind !== 'error') return;
+        console.warn('[auth] error in URL hash:', parsed);
+        // Defer to next tick so the rest of appInit (toasts, UI) is ready.
+        setTimeout(() => showAuthRecoveryModal(parsed), 100);
+    }
+
     // ===== INIT =====
     async function appInit() {
         try {
@@ -7407,6 +7569,10 @@
             await Promise.all([fetchSettings(), fetchCourses()]);
             await initAuth();
             renderPricingPlans();
+            // v1.6.18 — Detect Supabase auth error hashes (expired email links,
+            // invalid OTPs, access denials) and recover gracefully instead of
+            // leaving the user on a confusing landing page.
+            try { handleAuthHashErrors(); } catch (e) { console.warn('hash error handler failed:', e); }
         } catch(e){ console.error('appInit error:', e); }
     }
     async function fetchMyOrders() {

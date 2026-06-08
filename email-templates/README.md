@@ -2,6 +2,62 @@
 
 Premium, brand-matched email templates for Supabase Auth.
 
+---
+
+## ⚠️ READ THIS FIRST — Fix the `localhost:3000` redirect bug
+
+If your users are clicking the email confirmation link and landing on a URL
+like `http://localhost:3000/#error=access_denied&error_code=otp_expired`,
+**the bug is NOT in the email template — it's in your Supabase project's URL
+Configuration**. Here's the fix:
+
+### 🛠️ The dashboard fix (do this once)
+
+1. Open the [Supabase Dashboard](https://supabase.com/dashboard) → your project.
+2. Go to **Authentication → URL Configuration**.
+3. **Site URL** — set this to your **live production URL**, e.g.:
+   ```
+   https://healthiq.in
+   ```
+   (Or wherever the site is actually hosted. **NOT** `http://localhost:3000`.)
+4. **Redirect URLs** — add every URL the app might redirect to, one per line:
+   ```
+   https://healthiq.in
+   https://healthiq.in/
+   https://www.healthiq.in
+   https://www.healthiq.in/
+   ```
+   Add localhost too if you're still developing locally:
+   ```
+   http://localhost:3000
+   http://localhost:5173
+   ```
+5. Click **Save**.
+
+### Why this happens
+
+When you first create a Supabase project, Site URL defaults to `localhost:3000`
+(for local dev). The `{{ .ConfirmationURL }}` token in the email template uses
+that Site URL as its base — so the link in the email points at localhost. When
+the user clicks it from their phone, they hit a domain that doesn't exist on
+their device, and the auth callback fails. Updating Site URL fixes every
+future email; existing emails in inboxes will still have the bad URL because
+they were generated at send time.
+
+### Why the `otp_expired` error appears even after the dashboard fix
+
+Two reasons:
+1. **The link was already clicked once.** Supabase confirmation links are
+   one-time-use — the moment the user (or a corporate email security scanner
+   like Microsoft Defender / Gmail's safelinks) opens it, it's consumed.
+2. **It's been >1 hour.** Confirmation links expire after 1 hour by default.
+
+> **What v1.6.18 adds:** the site now detects this error in the URL hash and
+> automatically shows a recovery modal with a one-click "Resend Confirmation
+> Email" button — so even when this happens, users aren't stuck.
+
+---
+
 ## 📂 Files
 
 | File | Supabase template slot |
