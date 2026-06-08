@@ -1,46 +1,45 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.26 — Migration hotfix: ALTER existing notifications table.
-   * Problem: after running the v1.6.25 migration, admins still hit
-     "Could not find the 'body' column of 'notifications' in the
-     schema cache" on every approve/decline. Root cause:
-       1. A partial earlier run had created `public.notifications`
-          WITHOUT the `body` column (older schema shape).
-       2. The migration uses `CREATE TABLE IF NOT EXISTS`, which
-          is a no-op when the table already exists — so the new
-          column definitions in the CREATE block were never
-          applied to the partially-built table.
-       3. Even if the column had been added, PostgREST caches the
-          table shape and waits ~10 minutes to refresh on its own,
-          so the next INSERT would still report the missing column.
+   v1.6.27 — Migration hotfix #2: relax legacy NOT NULL columns.
+   * Problem: after running the v1.6.26 migration, admins now hit
+     a NEW error on approve/decline:
+       "null value in column 'message' of relation 'notifications'
+        violates not-null constraint"
+     Root cause: their pre-existing `notifications` table (created
+     by an older HealthIQ shape OR a totally unrelated app sharing
+     the project) carries extra mandatory columns like `message
+     TEXT NOT NULL`. Our v1.6.20+ INSERT only sets the columns
+     defined in the migration's section 2 (id, user_id, type,
+     title, body, metadata, is_read, created_at). Any legacy
+     NOT NULL column outside that set stays NULL on every INSERT
+     and trips the constraint.
    * Fix (SUPABASE_NOTIFICATIONS_MIGRATION.sql only — no JS change):
-     1. Added an `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` block
-        for EVERY column of `notifications`. Brings any
-        pre-existing partial table up to the current shape on
-        re-run. Each new column is nullable / has a default so
-        adding to a table with existing rows is safe.
-     2. Backfill UPDATEs set NULL metadata → '{}'::jsonb and
-        NULL is_read → false so the constraints below are
-        actually satisfiable.
-     3. NOT NULL re-asserted on `type` and `title` only if every
-        existing row already satisfies it. Wrapped in a DO block
-        with EXCEPTION so a clean error message replaces a
-        cryptic constraint-violation if there's bad data.
-     4. `NOTIFY pgrst, 'reload schema'` at the end forces
-        PostgREST to refresh its cache immediately — otherwise
-        the new column appears in Postgres but the REST API
-        still rejects INSERTs for ~10 minutes.
-     5. Verify block grew two extra rows (body column +
-        metadata column existence checks). Now reports 6 rows;
-        every one should show exists_count = 1.
-   * Why this matters: v1.6.25 set up the realtime + RLS
-     infrastructure correctly, but admins running on an older
-     partial migration would still see the schema-cache error
-     forever. This makes the migration truly idempotent.
+     1. New section 2b: a DO block that queries
+        information_schema.columns for every column on
+        public.notifications where is_nullable='NO' AND
+        column_name NOT IN ('id','type','title'), then runs
+          ALTER TABLE public.notifications
+            ALTER COLUMN <col> DROP NOT NULL
+        on each one. Columns are NOT dropped — any legacy reader
+        still gets the data — they just become optional going
+        forward. RAISE NOTICE prints each column it touched and
+        a summary count.
+     2. New section 5: a diagnostic SELECT that lists every
+        column on notifications with its data_type, is_nullable,
+        default, and a `health` column flagging any remaining
+        legacy NOT NULL. Run it any time to triage a future
+        "it broke again" report.
+   * Why this matters: v1.6.26 made the migration idempotent for
+     MISSING columns. v1.6.27 makes it idempotent for SURPLUS
+     NOT NULL columns. Together, the migration now self-heals
+     against virtually any pre-existing schema drift.
+   Carries forward from v1.6.26:
+   * ALTER TABLE ADD COLUMN IF NOT EXISTS for every column.
+   * NOTIFY pgrst 'reload schema' to refresh PostgREST cache.
    Carries forward from v1.6.25:
    * Realtime + 45s poll fallback for student notifications.
    * Loud toasts on admin INSERT failures.
    * Dual-admin RLS on notifications. */
-const VERSION = 'hiq-v1.6.26';
+const VERSION = 'hiq-v1.6.27';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

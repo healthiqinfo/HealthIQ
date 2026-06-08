@@ -20,6 +20,19 @@
 --  any pre-existing table to the current shape; the NOTIFY pgrst
 --  reload at the end forces PostgREST to pick up the new columns
 --  immediately (otherwise PostgREST waits ~10 minutes to refresh).
+--
+--  v1.6.27 update: relax legacy NOT NULL columns. Some earlier
+--  HealthIQ deployments (or unrelated apps sharing the project)
+--  created `notifications` with extra mandatory columns like
+--  `message TEXT NOT NULL` or `link TEXT NOT NULL`. Our app only
+--  writes the columns defined in section 2 below, so those legacy
+--  NOT NULL columns cause INSERT failures:
+--    "null value in column 'message' of relation
+--     'notifications' violates not-null constraint"
+--  Section 2b enumerates every NOT NULL column on `notifications`
+--  except our required set (id, type, title) and drops the NOT
+--  NULL constraint. Columns are NOT removed so any legacy reader
+--  still works — they just become optional from now on.
 -- ============================================================
 
 -- ------------------------------------------------------------
@@ -117,6 +130,55 @@ BEGIN
     END IF;
 EXCEPTION WHEN others THEN
     RAISE NOTICE 'Could not enforce NOT NULL on type/title — pre-existing rows have NULLs. App still works.';
+END
+$$;
+
+-- ------------------------------------------------------------
+-- 2b. v1.6.27 — Relax legacy NOT NULL columns.
+--     Some older HealthIQ deployments (or unrelated apps sharing
+--     this project) created the notifications table with extra
+--     mandatory columns like `message TEXT NOT NULL`, `link TEXT
+--     NOT NULL`, `created_by UUID NOT NULL`, etc. Our app's
+--     INSERT only sets the columns from section 2 above, so any
+--     unknown NOT NULL column causes:
+--       "null value in column '<X>' of relation 'notifications'
+--        violates not-null constraint"
+--     This block enumerates EVERY NOT NULL column on
+--     public.notifications that ISN'T in our required whitelist
+--     (id, type, title) and drops the NOT NULL constraint. The
+--     columns themselves are NOT removed — any legacy reader
+--     still gets the data. They just become optional going
+--     forward, which is what we want.
+--
+--     Safe to re-run: if a column is already nullable, DROP NOT
+--     NULL is a no-op.
+-- ------------------------------------------------------------
+DO $$
+DECLARE
+    r RECORD;
+    expected_not_null text[] := ARRAY['id', 'type', 'title'];
+    dropped_count int := 0;
+BEGIN
+    FOR r IN
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name   = 'notifications'
+          AND is_nullable  = 'NO'
+          AND column_name <> ALL (expected_not_null)
+    LOOP
+        EXECUTE format(
+            'ALTER TABLE public.notifications ALTER COLUMN %I DROP NOT NULL',
+            r.column_name
+        );
+        RAISE NOTICE 'Dropped legacy NOT NULL on public.notifications.%', r.column_name;
+        dropped_count := dropped_count + 1;
+    END LOOP;
+    IF dropped_count = 0 THEN
+        RAISE NOTICE 'No legacy NOT NULL columns to relax — schema already clean.';
+    ELSE
+        RAISE NOTICE 'Relaxed % legacy NOT NULL column(s). INSERTs from the app will now succeed.', dropped_count;
+    END IF;
 END
 $$;
 
@@ -241,3 +303,23 @@ SELECT 'notifications in realtime publication',
           AND schemaname='public'
           AND tablename='notifications');
 -- All SIX rows should show exists_count = 1.
+
+-- ------------------------------------------------------------
+-- 5. v1.6.27 — Diagnostic: list the full shape of notifications.
+--    Useful when "it still doesn't work" — paste this output back
+--    to triage. Highlights legacy columns and any column still
+--    marked NOT NULL outside our required set.
+-- ------------------------------------------------------------
+SELECT column_name,
+       data_type,
+       is_nullable,
+       COALESCE(column_default, '(none)') AS column_default,
+       CASE
+           WHEN is_nullable = 'NO' AND column_name NOT IN ('id','type','title')
+                THEN '⚠ legacy NOT NULL — may block INSERTs'
+           ELSE 'ok'
+       END AS health
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name   = 'notifications'
+ORDER BY ordinal_position;
