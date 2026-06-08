@@ -10,6 +10,16 @@
 --  events for `notifications` without any dashboard clicks. If you
 --  already ran an older version of this migration, re-running it is
 --  safe — the DROP POLICY IF EXISTS clauses tidy up the old shape.
+--
+--  v1.6.26 update: idempotent ALTER TABLE ADD COLUMN IF NOT EXISTS
+--  for EVERY notifications column, because CREATE TABLE IF NOT EXISTS
+--  short-circuits when a partial / older version of the table is
+--  already present (e.g. without the `body` column). PostgREST then
+--  reports "Could not find the 'body' column of 'notifications' in
+--  the schema cache" on every INSERT. The ALTER block below patches
+--  any pre-existing table to the current shape; the NOTIFY pgrst
+--  reload at the end forces PostgREST to pick up the new columns
+--  immediately (otherwise PostgREST waits ~10 minutes to refresh).
 -- ============================================================
 
 -- ------------------------------------------------------------
@@ -69,6 +79,46 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     created_at  timestamptz DEFAULT NOW(),
     read_at     timestamptz
 );
+
+-- v1.6.26 — PATCH existing tables.
+-- CREATE TABLE IF NOT EXISTS is a no-op when the table is already
+-- there, so a partial earlier run that created the table WITHOUT
+-- (e.g.) the `body` column won't ever pick up the column from the
+-- block above. We re-declare every column as ADD COLUMN IF NOT EXISTS
+-- so re-running this migration brings any older shape up to date.
+-- All columns are nullable (or have defaults) so adding them to a
+-- table that already has rows is safe.
+ALTER TABLE public.notifications
+    ADD COLUMN IF NOT EXISTS user_id    uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+    ADD COLUMN IF NOT EXISTS type       text,
+    ADD COLUMN IF NOT EXISTS title      text,
+    ADD COLUMN IF NOT EXISTS body       text,
+    ADD COLUMN IF NOT EXISTS metadata   jsonb DEFAULT '{}'::jsonb,
+    ADD COLUMN IF NOT EXISTS is_read    boolean DEFAULT false,
+    ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS read_at    timestamptz;
+
+-- Backfill any NULL metadata so future GIN-style queries don't choke.
+UPDATE public.notifications SET metadata = '{}'::jsonb WHERE metadata IS NULL;
+UPDATE public.notifications SET is_read  = false        WHERE is_read  IS NULL;
+
+-- Re-assert NOT NULL on the two required columns. Wrapped in a DO
+-- block because ALTER COLUMN ... SET NOT NULL will fail loudly if
+-- any existing row violates the constraint — we want a clean error
+-- in that case so the admin can investigate.
+DO $$
+BEGIN
+    -- Only enforce NOT NULL if every existing row already satisfies it.
+    IF NOT EXISTS (SELECT 1 FROM public.notifications WHERE type  IS NULL) THEN
+        ALTER TABLE public.notifications ALTER COLUMN type  SET NOT NULL;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.notifications WHERE title IS NULL) THEN
+        ALTER TABLE public.notifications ALTER COLUMN title SET NOT NULL;
+    END IF;
+EXCEPTION WHEN others THEN
+    RAISE NOTICE 'Could not enforce NOT NULL on type/title — pre-existing rows have NULLs. App still works.';
+END
+$$;
 
 -- Hot-path index: the dropdown query is "my unread notifications, newest first".
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
@@ -149,11 +199,31 @@ END
 $$;
 
 -- ------------------------------------------------------------
+-- 3c. v1.6.26 — Force PostgREST to reload its schema cache.
+--     PostgREST caches the table/column shape and only refreshes
+--     every ~10 minutes on its own. After we ADD COLUMN above,
+--     INSERTs through the REST API will report "Could not find
+--     the 'body' column in the schema cache" until that refresh.
+--     This NOTIFY makes PostgREST refresh immediately.
+-- ------------------------------------------------------------
+NOTIFY pgrst, 'reload schema';
+
+-- ------------------------------------------------------------
 -- 4. Verify everything landed
 -- ------------------------------------------------------------
 SELECT 'notifications table'              AS check_name,
        (SELECT COUNT(*) FROM information_schema.tables
         WHERE table_schema='public' AND table_name='notifications') AS exists_count
+UNION ALL
+SELECT 'notifications.body column',
+       (SELECT COUNT(*) FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='notifications'
+          AND column_name='body')
+UNION ALL
+SELECT 'notifications.metadata column',
+       (SELECT COUNT(*) FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='notifications'
+          AND column_name='metadata')
 UNION ALL
 SELECT 'orders.decline_reason column',
        (SELECT COUNT(*) FROM information_schema.columns
@@ -170,4 +240,4 @@ SELECT 'notifications in realtime publication',
         WHERE pubname='supabase_realtime'
           AND schemaname='public'
           AND tablename='notifications');
--- All FOUR rows should show exists_count = 1.
+-- All SIX rows should show exists_count = 1.

@@ -1,58 +1,46 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.25 — Real-time in-app notifications for students.
-   * Problem: emails were landing perfectly (decline + approve), but
-     students never saw the in-app notification we were inserting
-     into the notifications table. Three layered root causes:
-       1. fetchMyNotifications() ran only on initial page load + on
-          login. A student already in the app when admin acted saw
-          NOTHING until they reloaded the tab — which they never do.
-       2. The notification UI lives inside the avatar dropdown.
-          Without a toast actively grabbing attention, the user
-          had no way to know something arrived.
-       3. The RLS policy "admins insert any notification" required
-          profiles.role='admin'. If the admin was authed via the
-          bootstrap-email fallback (no profile.role set), every
-          INSERT silently failed RLS — the row never existed and
-          there was nothing to render. The code only console.warn'd
-          this, never surfaced it to the admin.
-   * Fix:
-     1. subscribeToMyNotifications() opens a Supabase Realtime
-        channel (postgres_changes INSERT filter scoped to the
-        user's own user_id). Sub-second push when the project has
-        Realtime enabled on the table.
-     2. 45-second polling fallback baked into the same function.
-        Runs only while document.visibilityState === 'visible',
-        diffs against existing IDs so the toast fires exactly
-        once per genuinely new row. Covers projects where
-        Realtime isn't enabled.
-     3. announceNotificationToast() — green confetti success for
-        payment_approved, amber warning for payment_declined,
-        blue info for everything else. Dedupe set caps unbounded
-        growth on long sessions.
-     4. Lifecycle hooks: subscribe on hydrateUserFromSession +
-        handleLogin; teardown on logout + SIGNED_OUT.
-     5. Admin-side INSERT failures now surface as warning toasts
-        instead of silent console.warn — so RLS/migration issues
-        are visible at the moment of the action.
-     6. SUPABASE_NOTIFICATIONS_MIGRATION.sql patched:
-          - RLS for admin INSERT + SELECT now uses the dual check
-            (profiles.role='admin' OR bootstrap email), mirroring
-            the client + Edge Function.
-          - ALTER PUBLICATION supabase_realtime ADD TABLE
-            public.notifications wrapped in an idempotent DO block.
-            Without this, Realtime delivers no events even when
-            the channel subscribes successfully.
-          - Verify block grew a 4th check for the publication row.
-   * Why this matters: students now see "🎉 Payment confirmed —
-     course unlocked!" appear as a toast the moment the admin
-     clicks Approve, with no reload required. Same for declines
-     ("⚠️ Payment declined — open your profile menu to see
-     details"). The notification bell on the avatar updates live.
-   Carries forward from v1.6.24:
-   * Bulletproof approval email template.
-   * Nodemailer SMTP (handles Gmail's TLS close quirk).
-   * SMTP error codes surfaced in toasts. */
-const VERSION = 'hiq-v1.6.25';
+   v1.6.26 — Migration hotfix: ALTER existing notifications table.
+   * Problem: after running the v1.6.25 migration, admins still hit
+     "Could not find the 'body' column of 'notifications' in the
+     schema cache" on every approve/decline. Root cause:
+       1. A partial earlier run had created `public.notifications`
+          WITHOUT the `body` column (older schema shape).
+       2. The migration uses `CREATE TABLE IF NOT EXISTS`, which
+          is a no-op when the table already exists — so the new
+          column definitions in the CREATE block were never
+          applied to the partially-built table.
+       3. Even if the column had been added, PostgREST caches the
+          table shape and waits ~10 minutes to refresh on its own,
+          so the next INSERT would still report the missing column.
+   * Fix (SUPABASE_NOTIFICATIONS_MIGRATION.sql only — no JS change):
+     1. Added an `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` block
+        for EVERY column of `notifications`. Brings any
+        pre-existing partial table up to the current shape on
+        re-run. Each new column is nullable / has a default so
+        adding to a table with existing rows is safe.
+     2. Backfill UPDATEs set NULL metadata → '{}'::jsonb and
+        NULL is_read → false so the constraints below are
+        actually satisfiable.
+     3. NOT NULL re-asserted on `type` and `title` only if every
+        existing row already satisfies it. Wrapped in a DO block
+        with EXCEPTION so a clean error message replaces a
+        cryptic constraint-violation if there's bad data.
+     4. `NOTIFY pgrst, 'reload schema'` at the end forces
+        PostgREST to refresh its cache immediately — otherwise
+        the new column appears in Postgres but the REST API
+        still rejects INSERTs for ~10 minutes.
+     5. Verify block grew two extra rows (body column +
+        metadata column existence checks). Now reports 6 rows;
+        every one should show exists_count = 1.
+   * Why this matters: v1.6.25 set up the realtime + RLS
+     infrastructure correctly, but admins running on an older
+     partial migration would still see the schema-cache error
+     forever. This makes the migration truly idempotent.
+   Carries forward from v1.6.25:
+   * Realtime + 45s poll fallback for student notifications.
+   * Loud toasts on admin INSERT failures.
+   * Dual-admin RLS on notifications. */
+const VERSION = 'hiq-v1.6.26';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
