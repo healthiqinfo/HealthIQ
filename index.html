@@ -5898,7 +5898,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.37';
+    const APP_VERSION = '1.6.38';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -9121,6 +9121,75 @@
         }
     }
 
+
+    // ─────────────────────────────────────────────────────────────────────
+    // v1.6.38 — Session-freshness guard for Edge Function calls
+    // ─────────────────────────────────────────────────────────────────────
+    // ROOT CAUSE (user-visible symptom):
+    //   "Payment approved ✓ — course unlocked, but welcome email failed:
+    //    HTTP 401 Invalid or expired session"
+    //
+    // WHY IT HAPPENED:
+    //   Supabase access tokens default to 1-hour expiry. supabase-js auto-
+    //   refreshes them in the background, but that refresh can fail
+    //   silently when:
+    //     • the OS was asleep while the refresh timer fired
+    //     • a network blip dropped the refresh call
+    //     • the system clock drifted enough to fail JWT validation
+    //     • the admin kept the tab open for ages without activity
+    //
+    //   The Approve flow first writes to `orders` + `enrollments` via
+    //   PostgREST (JWT validated locally with the project secret —
+    //   slightly more lenient about timing), and THEN calls the Edge
+    //   Function (which calls `auth.getUser()` against the Auth server,
+    //   which is strict). On a long-open tab the writes squeak through
+    //   while the function call lands just after expiry → 401 → email
+    //   never sent, even though the approval succeeded.
+    //
+    // FIX (two layers):
+    //   (1) PROACTIVE: ensureFreshSession() reads the current session,
+    //       checks expires_at, and force-refreshes if expiry is within
+    //       60 seconds. This eliminates the common "tab was open just
+    //       past 1 hour" case before the function is even called.
+    //   (2) REACTIVE: if attempt() still returns 401 (e.g. expiry hit
+    //       mid cold-start), we force one more refresh + retry. If that
+    //       STILL returns 401 the session is genuinely dead — we
+    //       surface a clear "log out and back in, then click Resend"
+    //       message that pairs with v1.6.36's 📧 Resend button.
+    // ─────────────────────────────────────────────────────────────────────
+    async function ensureFreshSession() {
+        if (!isSupabaseConfigured()) {
+            return { ok: false, reason: 'Supabase not configured', code: 'NO_CONFIG' };
+        }
+        try {
+            const { data, error } = await db.auth.getSession();
+            if (error) {
+                return { ok: false, reason: 'Could not read session: ' + (error.message || 'unknown'), code: 'GET_SESSION_FAILED' };
+            }
+            const session = data && data.session;
+            if (!session) {
+                return { ok: false, reason: 'No active session — please log in again', code: 'NO_SESSION' };
+            }
+            // expires_at is a unix timestamp in SECONDS (not ms).
+            // Refresh proactively if expiry is within 60 s (or already past).
+            const expiresAt = session.expires_at || 0;
+            const nowSec    = Math.floor(Date.now() / 1000);
+            const secondsLeft = expiresAt - nowSec;
+            if (!expiresAt || secondsLeft < 60) {
+                const { data: refreshData, error: refreshErr } = await db.auth.refreshSession();
+                if (refreshErr) {
+                    return { ok: false, reason: 'Session refresh failed: ' + (refreshErr.message || 'please log out and back in'), code: 'REFRESH_FAILED' };
+                }
+                if (!refreshData || !refreshData.session) {
+                    return { ok: false, reason: 'Session refresh returned no session — please log out and back in', code: 'REFRESH_NO_SESSION' };
+                }
+            }
+            return { ok: true };
+        } catch (e) {
+            return { ok: false, reason: (e && e.message) || 'Session check threw', code: 'EXCEPTION' };
+        }
+    }
+
     // v1.6.22 — Generic transactional-email sender used by BOTH the decline
     // flow and the approve flow. Calls the Supabase Edge Function
     // `send-decline-email` (name kept for backwards-compat with the
@@ -9148,6 +9217,10 @@
     //       1.5 s and try once more before giving up. The retry is
     //       silent — the admin only sees the final outcome.
     //
+    // v1.6.38 — Added session-freshness handling — see ensureFreshSession()
+    //   above. (C) proactively refreshes near-expiry tokens before the
+    //   call; (D) reactively refreshes + retries once on a 401 response.
+    //
     // type:        'declined' | 'approved'
     // to:          recipient email address (required)
     // userName:    used in the greeting (optional, defaults to "there")
@@ -9159,6 +9232,23 @@
         if (!to) return { ok: false, reason: 'No recipient email' };
         if (type !== 'declined' && type !== 'approved') {
             return { ok: false, reason: "Invalid type '" + type + "' — must be 'declined' or 'approved'" };
+        }
+
+        // ── (C) Proactive refresh BEFORE we burn an Edge Function call.
+        //        Cuts the 401 case to near-zero. If the session is
+        //        unrecoverable (refresh failed, user deleted, etc.) we
+        //        surface the actionable message right away.
+        const sessionCheck = await ensureFreshSession();
+        if (!sessionCheck.ok) {
+            return {
+                ok: false,
+                reason: sessionCheck.reason +
+                        ((sessionCheck.code === 'NO_SESSION' || sessionCheck.code === 'REFRESH_FAILED' || sessionCheck.code === 'REFRESH_NO_SESSION')
+                            ? ''
+                            : ' — please log out and log back in'),
+                status: 401,
+                code: sessionCheck.code
+            };
         }
 
         const body = {
@@ -9227,8 +9317,49 @@
             }
         }
 
-        // ── (B) First try, then one retry on transient errors ─────────
         let result = await attempt();
+
+        // ── (D) Reactive refresh-and-retry on 401 ─────────────────────
+        // Reaches this branch only if (C)'s proactive refresh wasn't
+        // enough — e.g. the access token expired mid cold-start, or the
+        // function ran slowly enough that our just-refreshed token aged
+        // out. Force one fresh refresh and retry. If we STILL get 401
+        // the refresh token is dead too — admin must re-login.
+        if (!result.ok && result.status === 401) {
+            console.warn('[email] 401 from Edge Function — forcing session refresh + retry');
+            try {
+                const { data: refreshData, error: refreshErr } = await db.auth.refreshSession();
+                if (refreshErr || !refreshData || !refreshData.session) {
+                    return {
+                        ok: false,
+                        reason: 'Your admin session expired and could not be refreshed (' + ((refreshErr && refreshErr.message) || 'no session returned') + '). Please log out and log back in, then click 📧 Resend on this order.',
+                        status: 401,
+                        code: 'SESSION_DEAD'
+                    };
+                }
+                const second = await attempt();
+                if (second.ok) return second;
+                if (second.status === 401) {
+                    return {
+                        ok: false,
+                        reason: 'Your admin session is still being rejected after a refresh — please log out and log back in, then click 📧 Resend on this order.',
+                        status: 401,
+                        code: 'SESSION_STILL_401'
+                    };
+                }
+                // Non-401 on retry — fall through to transient retry logic.
+                result = second;
+            } catch (e) {
+                return {
+                    ok: false,
+                    reason: 'Session refresh threw: ' + ((e && e.message) || 'unknown') + '. Please log out and log back in, then click 📧 Resend on this order.',
+                    status: 401,
+                    code: 'REFRESH_EXCEPTION'
+                };
+            }
+        }
+
+        // ── (B) Existing transient retry (5xx / network) ──────────────
         if (!result.ok && result.transient) {
             console.warn('[email] transient failure, retrying in 1.5s:', result.reason);
             await new Promise(function(r){ setTimeout(r, 1500); });

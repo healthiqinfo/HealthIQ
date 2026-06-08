@@ -1,4 +1,67 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
+   v1.6.38 — Auto-refresh admin session before / after Edge Function calls.
+
+   USER REPORT (after v1.6.36 surfaced the real reason for the first time)
+   -----------------------------------------------------------------------
+   "Payment approved ✓ — course unlocked, but welcome email failed:
+    HTTP 401 Invalid or expired session"
+
+   ROOT CAUSE
+   ------------------------------------------------------------------------
+   Supabase access tokens default to 1-hour expiry. supabase-js is
+   supposed to auto-refresh them in the background, but that refresh
+   can fail silently when:
+     • the OS was asleep when the refresh timer fired
+     • a network blip dropped the refresh call
+     • the system clock drifted past JWT validation tolerance
+     • the admin kept the tab open for a long time without activity
+
+   The Approve flow first writes to `orders` + `enrollments` via
+   PostgREST (JWT validated locally with the project secret — slightly
+   more lenient about timing), THEN calls the Edge Function (which
+   calls auth.getUser() against the Auth server, which is strict).
+   On a long-open tab the writes squeak through while the function
+   call lands just past expiry → 401 → email never sent, even though
+   the approval succeeded.
+
+   FIX — TWO LAYERS in client-side sendTransactionalEmail()
+   ------------------------------------------------------------------------
+   (C) PROACTIVE — new ensureFreshSession() helper called BEFORE the
+       Edge Function invoke. Reads the current session, inspects
+       session.expires_at, and forces db.auth.refreshSession() if the
+       token expires within 60 seconds (or is already past). Eliminates
+       the common "tab was open for just over an hour" 401 case
+       before the function is even touched.
+
+   (D) REACTIVE — if attempt() still returns 401 (rare: e.g. token
+       expired during a slow cold-start), we force one more
+       refreshSession() + retry. If that ALSO returns 401 the refresh
+       token itself is dead — we surface a clear "log out and back in,
+       then click 📧 Resend on this order" message which dovetails
+       with the v1.6.36 Resend button.
+
+   The Edge Function itself is unchanged — it already returns the
+   correct 401 + "Invalid or expired session" body that v1.6.36's
+   error extractor surfaces. This release just stops that 401 from
+   ever being reached in normal operation, and gives the admin a
+   recoverable path when it does.
+
+   FILES CHANGED
+   ------------------------------------------------------------------------
+   * index.html
+     - ensureFreshSession() helper added (~line 9123).
+     - sendTransactionalEmail (~line 9195): proactive ensureFreshSession()
+       call up front + reactive 401 refresh-and-retry block before the
+       existing transient retry.
+     - APP_VERSION 1.6.37 → 1.6.38
+   * sw.js
+     - VERSION hiq-v1.6.37 → hiq-v1.6.38 (forces clients to fetch
+       the new index.html).
+     - Header changelog prepended with this v1.6.38 note.
+
+   NO SQL changes. NO Edge Function changes. NO migration re-run.
+
+   === CARRIED FORWARD FROM v1.6.37 ===============================
    v1.6.37 — Triple code-audit bug-fix pass (no user-facing regressions, all
             three are latent bugs found during a deep code review).
 
@@ -335,7 +398,7 @@
    * ALTER TABLE ADD COLUMN IF NOT EXISTS + NOTIFY pgrst reload.
    Carries forward from v1.6.25:
    * Realtime + 45s poll fallback + dual-admin RLS. */
-const VERSION = 'hiq-v1.6.37';
+const VERSION = 'hiq-v1.6.38';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
