@@ -1,4 +1,16 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
+   v1.6.33 — Removed the bottom-center "Live · Watermarked · Secure Session ·
+   End-to-End Protected" info strip from the secure viewer per user request.
+   The trust signal lives in the top bar (3 badges) and the bottom-left
+   secure-corner pill, so the bottom strip was redundant chrome eating
+   reading space. Removal is pure deletion — CSS block, the unused
+   @keyframes pdfStripGradient, mobile media-query overrides, the
+   reduced-motion selector entry, the HTML element, and the three JS
+   dim/restore references all gone. Nothing else in the viewer pipeline
+   touched.
+   Pure index.html-only release (no SQL, no Edge Function, no migration changes).
+
+   === CARRIED FORWARD FROM v1.6.32 (Super Elite foundation) ======
    v1.6.32 — SUPER ELITE PDF Viewer (themes, brightness, milestones, micro-UX).
    Pure index.html-only release (no SQL, no Edge Function, no migration changes).
 
@@ -115,7 +127,7 @@
    * ALTER TABLE ADD COLUMN IF NOT EXISTS + NOTIFY pgrst reload.
    Carries forward from v1.6.25:
    * Realtime + 45s poll fallback + dual-admin RLS. */
-const VERSION = 'hiq-v1.6.32';
+const VERSION = 'hiq-v1.6.33';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

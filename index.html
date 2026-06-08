@@ -700,7 +700,6 @@
         @keyframes pdfSlideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes pdfFadeUp    { from { opacity: 0; transform: translateY(8px); }   to { opacity: 1; transform: translateY(0); } }
         @keyframes pdfBadgeShimmer { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); } 50% { box-shadow: 0 0 14px -2px rgba(255,255,255,0.18); } }
-        @keyframes pdfStripGradient { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
         @keyframes pdfRingSpin1 { to { transform: rotate(360deg); } }
         @keyframes pdfRingSpin2 { to { transform: rotate(-360deg); } }
         @keyframes pdfCorePulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.18); opacity: 0.85; } }
@@ -793,22 +792,6 @@
         /* Brightness overlay — sits above watermark (z:5), below corners/blockers (z:8) */
         .pdf-brightness-overlay { position: absolute; inset: 0; z-index: 6; background: #000; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; }
 
-        /* Bottom-center info strip — animated gradient text inside a glass pill */
-        .pdf-bottom-strip { position: absolute; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 7;
-            background: rgba(11, 18, 32, 0.65);
-            -webkit-backdrop-filter: blur(12px) saturate(180%); backdrop-filter: blur(12px) saturate(180%);
-            border: 1px solid rgba(255,255,255,0.1); border-radius: 999px;
-            padding: 0.42rem 1.1rem; pointer-events: none; user-select: none;
-            box-shadow: 0 6px 22px rgba(0,0,0,0.4);
-            transition: opacity 0.4s ease, transform 0.4s ease; }
-        .pdf-bottom-strip.dimmed { opacity: 0; transform: translateX(-50%) translateY(8px); }
-        .pdf-bottom-strip .strip-text { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.6px;
-            background: linear-gradient(90deg, #93c5fd 0%, #6ee7b7 25%, #fcd34d 50%, #f9a8d4 75%, #93c5fd 100%);
-            background-size: 220% 100%;
-            -webkit-background-clip: text; background-clip: text;
-            -webkit-text-fill-color: transparent; color: transparent;
-            animation: pdfStripGradient 5.5s linear infinite; }
-
         /* Upgraded secure-corner: now also hosts keyboard shortcut hints */
         .pdf-secure-corner .pdf-kbd-row { display: inline-flex; align-items: center; gap: 0.32rem; padding-left: 0.55rem; margin-left: 0.5rem; border-left: 1px solid rgba(255,255,255,0.16); }
         .pdf-secure-corner .pdf-kbd-row kbd { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 0.06rem 0.34rem; border-radius: 4px;
@@ -818,8 +801,6 @@
         @media (max-width: 700px) {
             .pdf-secure-corner .pdf-kbd-row { display: none; } /* keep mobile lean */
             .pdf-display-panel { right: 8px; left: 8px; min-width: 0; }
-            .pdf-bottom-strip  { font-size: 0.62rem; padding: 0.35rem 0.85rem; bottom: 0.65rem; }
-            .pdf-bottom-strip .strip-text { font-size: 0.62rem; letter-spacing: 0.4px; }
             .pdf-elite-spinner { width: 72px; height: 72px; }
         }
         /* Honour reduced-motion users — disable shimmer + sweeps + heavy animations */
@@ -828,7 +809,6 @@
             .pdf-viewer.active .pdf-viewer-bar-title-wrap,
             .pdf-viewer.active .pdf-bar-actions,
             .pdf-viewer.active .pdf-badges .pdf-badge,
-            .pdf-bottom-strip .strip-text,
             .pdf-elite-spinner .ring,
             .pdf-elite-spinner .core { animation: none !important; }
             .pdf-viewer-bar .pdf-icon-btn::before,
@@ -4172,11 +4152,6 @@
                 </div>
             </div>
 
-            <!-- Bottom-center info strip with animated gradient text -->
-            <div class="pdf-bottom-strip" id="pdfBottomStrip" aria-hidden="true">
-                <span class="strip-text">&#x1F6E1;&#xFE0F; Live &middot; Watermarked &middot; Secure Session &middot; End-to-End Protected</span>
-            </div>
-
             <!-- Secure-corner: trust indicator + keyboard shortcut hints (desktop only) -->
             <div class="pdf-secure-corner" id="pdfSecureCorner">
                 <span class="pulse-dot" aria-hidden="true"></span>Secure &middot; watermarked
@@ -5884,7 +5859,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.32';
+    const APP_VERSION = '1.6.33';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -9365,16 +9340,14 @@
         try { if(navigator.vibrate) navigator.vibrate(ms || 10); } catch(_) {}
     }
     function pdfShowChrome(){
-        // Reveal the header + corner badge + bottom strip and re-arm the auto-dim timer.
+        // Reveal the header + corner badge and re-arm the auto-dim timer.
         document.getElementById('pdfViewerBar')?.classList.remove('dimmed');
         document.getElementById('pdfSecureCorner')?.classList.remove('dimmed');
-        document.getElementById('pdfBottomStrip')?.classList.remove('dimmed');
         if(_focusModeTimer) clearTimeout(_focusModeTimer);
         _focusModeTimer = setTimeout(() => {
             if(!document.getElementById('pdfViewer')?.classList.contains('active')) return;
             document.getElementById('pdfViewerBar')?.classList.add('dimmed');
             document.getElementById('pdfSecureCorner')?.classList.add('dimmed');
-            document.getElementById('pdfBottomStrip')?.classList.add('dimmed');
         }, 5500);
     }
     function pdfTogglePdfFullscreen(){
@@ -9570,7 +9543,6 @@
         // Reset dim state so the next open starts with a fully visible chrome.
         document.getElementById('pdfViewerBar')?.classList.remove('dimmed');
         document.getElementById('pdfSecureCorner')?.classList.remove('dimmed');
-        document.getElementById('pdfBottomStrip')?.classList.remove('dimmed');
         // Reset splash so the next open shows it again (otherwise stale `.done` persists).
         document.getElementById('pdfLoadingSplash')?.classList.remove('done');
         document.getElementById('pdfLoadBar')?.classList.remove('done');
