@@ -1,50 +1,70 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.30 — Notification action-button bug fixes.
-   * Problem A (menu banner buttons completely dead):
-     The v1.6.29 banner used inline onclick handlers like
-       onclick="markNotificationRead(' + n.id + ')"
-       onclick="retryDeclinedPayment(' + n.id + ',\'...\')"
-     The real schema (per the section-5 diagnostic) has notifications.id
-     as `uuid`, not bigserial. So n.id is a string like
-     "abc-123-def-456" — embedded UNQUOTED into the JS attribute it
-     parses as a hyphen-subtraction expression with undefined
-     identifiers, throws ReferenceError, and the click silently does
-     nothing. Both Try Again AND Dismiss in the avatar menu looked
-     dead because of this.
-   * Problem B (toast Try Again opened nothing visible):
-     retryDeclinedPayment was calling enrollCourse, which checks
-     APP.myOrders for a pending order. After admin declined, the
-     server's order.status is now 'failed', but the client's
-     APP.myOrders cache still holds the OLD 'pending' row until the
-     next fetch. enrollCourse sees pending → fires
-       "Payment already submitted, waiting for admin approval."
-     ...which lives in the toast container, right where the rich
-     notification toast just was. The user perceived "nothing
-     happened".
-   * Fixes (index.html only — no SQL, no Edge Function changes):
-     1. renderUserNotificationBanner now emits NO inline onclicks.
-        Every button has data-notif-action="dismiss|retry|open|mark-all"
-        + data-notif-id="<uuid>" + (for retry) data-course-id="<uuid>".
-        A single handleNotificationBannerClick delegated handler reads
-        the dataset and dispatches. data-* attributes are preserved
-        as strings by the browser — no quoting / escaping bugs ever.
-     2. retryDeclinedPayment rewritten:
-        a) Marks the notification read in the background (no await).
-        b) Calls fetchOrders() FIRST so the now-failed order is
-           reflected locally before any pending-check runs.
-        c) If the course isn't in APP.courses (slow load / unpublished
-           / etc.), fetches it directly from the DB by id with
-           .maybeSingle() — so the user gets the QR even when the
-           local cache is empty.
-        d) Calls showPaymentModal DIRECTLY rather than enrollCourse,
-           so the stale-pending check can't fire. The user explicitly
-           clicked Try Again — they want the QR, not a status warning.
-        e) console.log at every step so the next "doesn't work"
-           report is one DevTools panel away from root cause.
-   * Net effect after re-running the migration once more is unchanged:
-     v1.6.28's section 2c already cleaned the schema. This release is
-     pure JS bug-fixing on the action handlers. Hard-refresh to load
-     hiq-v1.6.30.
+   v1.6.31 — Elite PDF Viewer + 30% lighter watermark + hardened security.
+   Pure index.html-only release (no SQL, no Edge Function, no migration changes).
+
+   === ELITE VIEWER UX ===========================================
+   * Premium gradient bar with two-line layout: title above; meta + live
+     reading-time chip + three security badges (DRM / View-Only /
+     Watermarked) below. Two icon buttons (reload, fullscreen) +
+     gradient close button on the right.
+   * Loading splash with spinner + "Securing your document…" + sub-line,
+     plus a slim shimmering gradient progress bar at the top of the
+     stage. Both fade out 600ms after the iframe fires `load`.
+   * Reading-time HUD updates every second (MM:SS, monospace, badge-style).
+   * Focus mode: 5.5s of mouse / touch / keyboard inactivity dims the
+     header + corner badge to 18% opacity. Any input restores them; CSS
+     :hover on the bar also reveals it while dimmed.
+   * Subtle "Secure session · watermarked" badge bottom-left with a
+     pulsing emerald dot. Dimmable in step with focus mode.
+   * Animated viewer fade-in (scale 0.985 → 1, 350ms cubic-bezier).
+   * Reload button re-arms the same URL (about:blank → original) so
+     transient Drive errors can be recovered without closing the viewer.
+   * Fullscreen button uses native Fullscreen API with Safari/MS prefixes.
+   * Escape now routes through closeSecureViewer (cleans every timer).
+
+   === WATERMARK -30% DENSITY =====================================
+   * CSS opacity 0.13 → 0.11; gap 90 → 110px; padding 26 → 32px.
+   * JS desktop 36 rows × 12 = 432 spans → 25 × 12 = 300 spans (-30.5%).
+   * JS mobile  30 rows × 9  = 270 spans → 21 × 9  = 189 spans (-30.0%).
+   * Mobile CSS gap 60 → 75px; padding 22 → 28px.
+   * Net effect: cleaner, more elegant reading surface; same per-user
+     stamp (name • email • timestamp • #shortId) at the same -26° angle.
+
+   === HARDENED SECURITY ==========================================
+   * iframe sandbox dropped `allow-forms` — Drive preview doesn't need
+     it, removal prevents any future hostile content from submitting a
+     hidden download form.
+   * Wider top-right pop-out blocker (140×56 → 160×62) to cover newer
+     Drive toolbar variants that show an extra icon.
+   * NEW bottom-right FAB blocker (84×84 desktop / 68×68 mobile)
+     covering Drive's mobile floating download button.
+   * Viewer root now also has ondragstart="return false" + oncopy="return
+     false" alongside the existing oncontextmenu — drag-to-save and
+     selection-copy are both rejected at the boundary.
+   * Document-level copy/cut listener (while viewer open) shows a toast
+     and preventDefault()s, in case anything escapes the inline handler.
+   * window.beforeprint activates the black blocker AND a toast — fires
+     even on OS-menu / browser-menu print (which bypasses keydown).
+   * @media print CSS blanks the entire body and replaces it with
+     "🔒 Printing is disabled for HealthIQ protected course content."
+     Belt-and-braces alongside the beforeprint JS handler.
+   * window.afterprint clears the blocker so the user can resume.
+   * user-select / -webkit-user-select / -moz-user-select / -ms-user-select
+     / -webkit-touch-callout all set to none on .pdf-viewer root —
+     mobile long-press save-image / copy-text menus suppressed.
+
+   === EXISTING DEFENSES (unchanged, still active) ================
+   * Ctrl/Cmd + S / P / U → preventDefault + toast.
+   * Ctrl/Cmd + Shift + I / J / C and F12 → preventDefault (dev-tools).
+   * PrintScreen / Ctrl+Shift+S → black blocker overlay.
+   * Drive `/preview?usp=embed_facebook&rm=minimal` strips Drive's own
+     download/popout chrome at the URL level.
+   * Per-user identifying watermark refreshed every 25s.
+   * visibilitychange → logCourseView('blur') (audit trail).
+
+   Carries forward from v1.6.30:
+   * Notification action-button bug fixes (data-* delegation +
+     showPaymentModal direct call).
    Carries forward from v1.6.29:
    * Rich toast + themed banner + pulsing avatar dot + tab title flash.
    Carries forward from v1.6.28:
@@ -55,7 +75,7 @@
    * ALTER TABLE ADD COLUMN IF NOT EXISTS + NOTIFY pgrst reload.
    Carries forward from v1.6.25:
    * Realtime + 45s poll fallback + dual-admin RLS. */
-const VERSION = 'hiq-v1.6.30';
+const VERSION = 'hiq-v1.6.31';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

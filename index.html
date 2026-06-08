@@ -537,31 +537,147 @@
         .verify-banner h3 { color: #166534; font-size: 1.1rem; margin-bottom: 0.3rem; }
         .verify-banner p { color: #166534; font-size: 0.88rem; opacity: 0.85; }
 
-        /* ===== SECURE PDF VIEWER ===== */
-        .pdf-viewer { position: fixed; inset: 0; background: #0b0f17; z-index: 9000; display: none; flex-direction: column; }
-        .pdf-viewer.active { display: flex; }
-        .pdf-viewer-bar { background: linear-gradient(135deg,#0f172a,#1e293b); color: #fff; padding: 0.75rem 1rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 2px 8px rgba(0,0,0,0.3); flex-wrap: wrap; }
-        .pdf-viewer-bar h3 { font-size: 0.95rem; font-weight: 700; flex: 1; min-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* =====================================================================
+           ===== SECURE PDF VIEWER — ELITE EDITION (v1.6.31) ====================
+           Premium reading experience layered on top of a hardened security shell.
+           Highlights:
+             • Animated fade-in, gradient bar w/ badges (DRM / View-Only / Watermarked)
+             • Loading splash + shimmer progress bar (hides on iframe `load`)
+             • Reading timer in header, focus-mode auto-dim of chrome (5.5s idle)
+             • Wider pop-out blocker (160×62) + new bottom-right FAB blocker
+             • Subtle "secure session" corner badge with pulsing live dot
+             • Watermark density REDUCED 30% (opacity 0.13→0.11, wider gaps,
+               JS row counts cut from 36→25 desktop / 30→21 mobile)
+             • user-select: none on the whole viewer + @media print kill switch
+           ===================================================================== */
+        .pdf-viewer { position: fixed; inset: 0; background: #0b0f17; z-index: 9000; display: none; flex-direction: column;
+            user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; -webkit-touch-callout: none; }
+        .pdf-viewer.active { display: flex; animation: pdfViewerFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes pdfViewerFadeIn { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: scale(1); } }
+
+        .pdf-viewer-bar { background: linear-gradient(135deg, #0b1220 0%, #0f172a 50%, #1e293b 100%); color: #fff;
+            padding: 0.7rem 1.1rem; display: flex; align-items: center; gap: 0.8rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+            flex-wrap: wrap; position: relative; z-index: 12;
+            transition: opacity 0.4s ease, transform 0.4s ease; }
+        .pdf-viewer-bar.dimmed { opacity: 0.18; }
+        .pdf-viewer-bar.dimmed:hover, .pdf-viewer-bar.dimmed:focus-within { opacity: 1; }
+        .pdf-viewer-bar-title-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.18rem; }
+        .pdf-viewer-bar h3 { font-size: 0.98rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; letter-spacing: 0.2px; }
+        .pdf-viewer-bar .pdf-meta-row { display: flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; }
         .pdf-viewer-bar .pdf-meta { font-size: 0.72rem; opacity: 0.7; font-weight: 500; }
-        .pdf-viewer-bar .btn { padding: 0.4rem 0.85rem; font-size: 0.78rem; }
+        .pdf-viewer-bar .pdf-timer { font-size: 0.7rem; opacity: 0.85; font-weight: 700; font-variant-numeric: tabular-nums; color: #93c5fd;
+            background: rgba(96, 165, 250, 0.12); border: 1px solid rgba(96, 165, 250, 0.28); padding: 0.1rem 0.45rem; border-radius: 6px; letter-spacing: 0.3px; }
+        .pdf-viewer-bar .pdf-badges { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+        .pdf-viewer-bar .pdf-badge { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.16rem 0.5rem; border-radius: 999px;
+            font-size: 0.62rem; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
+            background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14); color: #e2e8f0; }
+        .pdf-viewer-bar .pdf-badge.secure   { background: linear-gradient(135deg, rgba(16,185,129,0.18), rgba(59,130,246,0.18));  border-color: rgba(16,185,129,0.45); color: #6ee7b7; }
+        .pdf-viewer-bar .pdf-badge.view-only{ background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(99,102,241,0.18));  border-color: rgba(99,102,241,0.45); color: #a5b4fc; }
+        .pdf-viewer-bar .pdf-badge.wm       { background: linear-gradient(135deg, rgba(245,158,11,0.16), rgba(239,68,68,0.12));   border-color: rgba(245,158,11,0.35); color: #fcd34d; }
+        .pdf-viewer-bar .pdf-bar-actions { display: flex; gap: 0.4rem; align-items: center; }
+        .pdf-viewer-bar .pdf-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0;
+            font-size: 0.95rem; line-height: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px;
+            color: #fff; cursor: pointer; transition: all 0.18s ease; font-family: inherit; }
+        .pdf-viewer-bar .pdf-icon-btn:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.38); transform: translateY(-1px); }
+        .pdf-viewer-bar .pdf-icon-btn:active { transform: translateY(0); }
+        .pdf-viewer-bar .pdf-icon-btn:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+        .pdf-viewer-bar .pdf-close-btn { background: linear-gradient(135deg, #ef4444, #b91c1c); border: 1px solid rgba(255,255,255,0.22);
+            border-radius: 8px; padding: 0.5rem 0.95rem; font-size: 0.78rem; font-weight: 700; color: #fff; cursor: pointer; transition: all 0.18s ease;
+            box-shadow: 0 2px 6px rgba(239,68,68,0.35); display: inline-flex; align-items: center; gap: 0.3rem; font-family: inherit; }
+        .pdf-viewer-bar .pdf-close-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(239,68,68,0.55); }
+        .pdf-viewer-bar .pdf-close-btn:focus-visible { outline: 2px solid #fca5a5; outline-offset: 2px; }
+
         .pdf-viewer-stage { flex: 1; position: relative; overflow: hidden; background: #1a1f2e; }
         .pdf-viewer-frame { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
-        /* Cover Google Drive's toolbar buttons (pop-out, new-tab, download) — top-right of iframe.
-           Drive renders its toolbar inside the iframe; we cannot modify it (cross-origin) but we can
-           place opaque blockers ABOVE it so clicks can never reach those buttons. */
-        .pdf-popout-blocker { position: absolute; top: 0; right: 0; width: 140px; height: 56px; background: linear-gradient(135deg,#0f172a,#1e293b); z-index: 8; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; opacity: 0.96; border-bottom-left-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.4); pointer-events: auto; cursor: not-allowed; user-select: none; }
-        .pdf-popout-blocker::before { content: '\1F512'; margin-right: 6px; font-size: 0.95rem; }
-        /* Tiny side blocker for kebab/menu icon some viewers show on left */
-        .pdf-menu-blocker { position: absolute; top: 0; left: 0; width: 56px; height: 56px; background: transparent; z-index: 8; pointer-events: auto; cursor: not-allowed; }
-        /* Diagonal sparse watermark using a single absolutely-positioned text repeated with offsets via SVG-like pattern.
-           CSS-only solution: a 1 huge tile with background pattern. */
-        .pdf-watermark { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; opacity: 0.13; user-select: none; }
+
+        /* Loading shimmer bar — slim gradient line at the top of the stage */
+        .pdf-load-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 11; background: rgba(255,255,255,0.08); overflow: hidden; }
+        .pdf-load-bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, #60a5fa, #34d399, #60a5fa, transparent); background-size: 50% 100%; animation: pdfLoadShimmer 1.4s linear infinite; }
+        .pdf-load-bar.done { opacity: 0; transition: opacity 0.5s ease; pointer-events: none; }
+        @keyframes pdfLoadShimmer { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+
+        /* Loading splash — shown until the iframe fires `load`, then fades out */
+        .pdf-loading-splash { position: absolute; inset: 0; z-index: 10; background: radial-gradient(ellipse at center, #1a1f2e 0%, #0b0f17 80%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; color: #fff; transition: opacity 0.45s ease; }
+        .pdf-loading-splash.done { opacity: 0; pointer-events: none; }
+        .pdf-loading-spinner { width: 56px; height: 56px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.1); border-top-color: #60a5fa; border-right-color: #34d399; animation: pdfSpin 0.9s linear infinite; }
+        @keyframes pdfSpin { to { transform: rotate(360deg); } }
+        .pdf-loading-text { font-size: 0.95rem; font-weight: 700; opacity: 0.92; letter-spacing: 0.3px; }
+        .pdf-loading-sub  { font-size: 0.7rem; opacity: 0.55; letter-spacing: 0.8px; text-transform: uppercase; font-weight: 800; }
+
+        /* Cover Drive's toolbar buttons (pop-out, new-tab, download) — top-right of iframe.
+           Drive renders its toolbar INSIDE the iframe; cross-origin means we can't modify it,
+           but an opaque blocker placed ABOVE it intercepts every click so those buttons can
+           never be reached. v1.6.31 widened to 160×62 to cover newer Drive variants that
+           occasionally render an additional icon. */
+        .pdf-popout-blocker { position: absolute; top: 0; right: 0; width: 160px; height: 62px;
+            background: linear-gradient(135deg, #0b1220, #1e293b); z-index: 8; display: flex; align-items: center; justify-content: center;
+            color: #fff; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.6px; opacity: 0.97;
+            border-bottom-left-radius: 10px; box-shadow: 0 3px 12px rgba(0,0,0,0.5), inset 2px 0 0 rgba(16,185,129,0.4);
+            pointer-events: auto; cursor: not-allowed; user-select: none; text-transform: uppercase; }
+        .pdf-popout-blocker::before { content: '\1F512'; margin-right: 6px; font-size: 1rem; }
+
+        /* Tiny side blocker for kebab/menu icon some viewers show on the left */
+        .pdf-menu-blocker { position: absolute; top: 0; left: 0; width: 60px; height: 60px; background: transparent; z-index: 8; pointer-events: auto; cursor: not-allowed; }
+
+        /* v1.6.31 — bottom-right blocker covering Drive's mobile floating download FAB area */
+        .pdf-fab-blocker { position: absolute; bottom: 0; right: 0; width: 84px; height: 84px; background: transparent; z-index: 8; pointer-events: auto; cursor: not-allowed; }
+
+        /* Diagonal sparse watermark — v1.6.31 DENSITY -30%
+           Before: opacity 0.13 / gap 90px / padding 26px / 36×12 = 432 spans (desktop)
+           After:  opacity 0.11 / gap 110px / padding 32px / 25×12 = 300 spans (-30.5%)
+           Mobile cut from 30×9 = 270  →  21×9 = 189 spans (-30.0%). */
+        .pdf-watermark { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; opacity: 0.11; user-select: none; }
         .pdf-watermark-tile { position: absolute; top: -50%; left: -50%; right: -50%; bottom: -50%; transform: rotate(-26deg); display: grid; grid-template-columns: 1fr; gap: 0; }
-        .pdf-watermark-row { display: flex; gap: 90px; white-space: nowrap; padding: 26px 0; }
+        .pdf-watermark-row { display: flex; gap: 110px; white-space: nowrap; padding: 32px 0; }
         .pdf-watermark-row span { font-size: 0.78rem; font-weight: 700; color: #0f172a; letter-spacing: 0.5px; font-family: 'Inter', system-ui, sans-serif; flex-shrink: 0; }
+
+        /* Subtle bottom-left badge confirming the secure session */
+        .pdf-secure-corner { position: absolute; bottom: 0.85rem; left: 0.85rem; z-index: 8;
+            background: rgba(15, 23, 42, 0.78); color: #fff; padding: 0.35rem 0.75rem; border-radius: 999px;
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 0.4px;
+            -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.14); display: inline-flex; align-items: center; gap: 0.45rem;
+            user-select: none; pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+            transition: opacity 0.4s ease; }
+        .pdf-secure-corner.dimmed { opacity: 0.25; }
+        .pdf-secure-corner .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 0 rgba(52,211,153,0.7); animation: pdfPulseDot 1.7s ease-out infinite; }
+        @keyframes pdfPulseDot { 0% { box-shadow: 0 0 0 0 rgba(52,211,153,0.7); } 70% { box-shadow: 0 0 0 9px rgba(52,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); } }
+
         .pdf-blocker { position: absolute; inset: 0; background: #000; z-index: 9999; display: none; align-items: center; justify-content: center; color: #fff; font-size: 1.2rem; flex-direction: column; gap: 1rem; }
         .pdf-blocker.active { display: flex; }
-        @media (max-width: 600px) { .pdf-viewer-bar h3 { font-size: 0.82rem; } .pdf-watermark-row { gap: 60px; padding: 22px 0; } .pdf-watermark-row span { font-size: 0.68rem; } .pdf-popout-blocker { width: 110px; height: 50px; font-size: 0.62rem; } }
+
+        @media (max-width: 600px) {
+            .pdf-viewer-bar { padding: 0.6rem 0.8rem; gap: 0.5rem; }
+            .pdf-viewer-bar h3 { font-size: 0.85rem; }
+            .pdf-viewer-bar .pdf-icon-btn { width: 30px; height: 30px; font-size: 0.85rem; }
+            .pdf-viewer-bar .pdf-close-btn { padding: 0.4rem 0.7rem; font-size: 0.72rem; }
+            .pdf-viewer-bar .pdf-badge { font-size: 0.58rem; padding: 0.13rem 0.4rem; }
+            .pdf-viewer-bar .pdf-timer { font-size: 0.65rem; padding: 0.08rem 0.38rem; }
+            .pdf-watermark-row { gap: 75px; padding: 28px 0; }
+            .pdf-watermark-row span { font-size: 0.68rem; }
+            .pdf-popout-blocker { width: 124px; height: 54px; font-size: 0.6rem; }
+            .pdf-fab-blocker { width: 68px; height: 68px; }
+            .pdf-secure-corner { font-size: 0.62rem; padding: 0.28rem 0.6rem; bottom: 0.6rem; left: 0.6rem; }
+            .pdf-loading-text { font-size: 0.85rem; }
+        }
+
+        /* v1.6.31 — Print kill switch. Even if a user invokes print via OS / browser menu
+           (which bypasses our keydown listener on most browsers) this CSS blanks the body
+           and replaces it with a notice. Belt-and-braces alongside the `beforeprint` JS
+           handler that closes the viewer outright. */
+        @media print {
+            body * { visibility: hidden !important; }
+            body::before {
+                content: '\1F512  Printing is disabled for HealthIQ protected course content.';
+                visibility: visible !important;
+                position: fixed; inset: 0;
+                display: flex; align-items: center; justify-content: center;
+                font: 700 22px/1.4 'Inter', system-ui, sans-serif;
+                color: #000; background: #fff;
+                text-align: center; padding: 2rem;
+            }
+        }
 
         /* ===== STUDENT DASHBOARD ===== */
         .dash-overlay { position: fixed; inset: 0; background: var(--gray-50); z-index: 7500; display: none; overflow-y: auto; }
@@ -3824,19 +3940,53 @@
         </div>
     </div>
 
-    <!-- ===== SECURE PDF VIEWER ===== -->
-    <div class="pdf-viewer" id="pdfViewer" oncontextmenu="return false;">
-        <div class="pdf-viewer-bar">
-            <h3 id="pdfViewerTitle">Course</h3>
-            <span class="pdf-meta" id="pdfViewerMeta"></span>
-            <button class="btn btn-ghost btn-sm" onclick="closeSecureViewer()" style="color:#fff;border:1px solid rgba(255,255,255,0.25);">&#x2715; Close</button>
+    <!-- ===== SECURE PDF VIEWER — Elite Edition (v1.6.31) =====
+         Layered defenses (read top-to-bottom):
+           1. Root has oncontextmenu/ondragstart/oncopy → return false so right-click,
+              drag-to-save, and selection-copy are all blocked at the viewer boundary.
+           2. iframe sandbox dropped `allow-forms` — Drive's preview doesn't need it,
+              and the absence prevents any future hostile content from submitting a
+              hidden form that triggers a download URL.
+           3. Pop-out + menu + FAB blockers are opaque DOM layers sitting ON TOP of
+              the iframe's cross-origin toolbar buttons (Drive's download / new-tab
+              icons). Cross-origin means we can't hide them — we just intercept the
+              click.
+           4. Loading splash + load bar give Elite UX while the iframe boots.
+           5. Secure-corner badge is a passive, dimmable trust indicator. -->
+    <div class="pdf-viewer" id="pdfViewer" oncontextmenu="return false;" ondragstart="return false;" oncopy="return false;">
+        <div class="pdf-viewer-bar" id="pdfViewerBar">
+            <div class="pdf-viewer-bar-title-wrap">
+                <h3 id="pdfViewerTitle">Course</h3>
+                <div class="pdf-meta-row">
+                    <span class="pdf-meta" id="pdfViewerMeta"></span>
+                    <span class="pdf-timer" id="pdfViewerTimer" title="Reading time" aria-label="Reading time">00:00</span>
+                    <span class="pdf-badges" aria-hidden="true">
+                        <span class="pdf-badge secure">&#x1F512; DRM</span>
+                        <span class="pdf-badge view-only">&#x1F441;&#xFE0F; View-Only</span>
+                        <span class="pdf-badge wm">&#x1F4A7; Watermarked</span>
+                    </span>
+                </div>
+            </div>
+            <div class="pdf-bar-actions">
+                <button class="pdf-icon-btn" type="button" id="pdfReloadBtn" title="Reload document" aria-label="Reload document">&#x21BB;</button>
+                <button class="pdf-icon-btn" type="button" id="pdfFullscreenBtn" title="Toggle fullscreen" aria-label="Toggle fullscreen">&#x26F6;</button>
+                <button class="pdf-close-btn" type="button" onclick="closeSecureViewer()" aria-label="Close secure viewer">&#x2715; Close</button>
+            </div>
         </div>
         <div class="pdf-viewer-stage">
-            <iframe class="pdf-viewer-frame" id="pdfViewerFrame" src="about:blank" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer" allow="autoplay"></iframe>
+            <div class="pdf-load-bar" id="pdfLoadBar" aria-hidden="true"></div>
+            <iframe class="pdf-viewer-frame" id="pdfViewerFrame" src="about:blank" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer" allow="autoplay" title="Secure course PDF viewer"></iframe>
+            <div class="pdf-loading-splash" id="pdfLoadingSplash">
+                <div class="pdf-loading-spinner" aria-hidden="true"></div>
+                <div class="pdf-loading-text">Securing your document&hellip;</div>
+                <div class="pdf-loading-sub">DRM &middot; Watermark &middot; View-only</div>
+            </div>
             <div class="pdf-watermark" id="pdfWatermark"><div class="pdf-watermark-tile" id="pdfWatermarkTile"></div></div>
             <div class="pdf-popout-blocker" title="Pop-out is disabled for protected content" onclick="showToast('Pop-out and external open are disabled for protected content','warning')">PROTECTED</div>
-            <div class="pdf-menu-blocker" onclick="event.stopPropagation()"></div>
-            <div class="pdf-blocker" id="pdfBlocker"><div style="font-size:3rem;">&#x1F512;</div><div>Screenshot detected — content hidden</div><button class="btn btn-outline" onclick="document.getElementById('pdfBlocker').classList.remove('active')" style="color:#fff;border-color:#fff;">Resume</button></div>
+            <div class="pdf-menu-blocker" onclick="event.stopPropagation()" aria-hidden="true"></div>
+            <div class="pdf-fab-blocker" onclick="event.stopPropagation()" aria-hidden="true"></div>
+            <div class="pdf-secure-corner" id="pdfSecureCorner"><span class="pulse-dot" aria-hidden="true"></span>Secure session &middot; watermarked</div>
+            <div class="pdf-blocker" id="pdfBlocker"><div style="font-size:3rem;">&#x1F512;</div><div>Screenshot detected &mdash; content hidden</div><button class="btn btn-outline" onclick="document.getElementById('pdfBlocker').classList.remove('active')" style="color:#fff;border-color:#fff;">Resume</button></div>
         </div>
     </div>
 
@@ -5532,7 +5682,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.30';
+    const APP_VERSION = '1.6.31';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -8930,8 +9080,15 @@
         } catch(e){ console.error('fetchMyOrders exception:',e); APP.myOrders=[]; }
     }
 
-    // ===== SECURE PDF VIEWER (DRM-LITE) =====
+    // ===== SECURE PDF VIEWER (DRM-LITE) — Elite Edition v1.6.31 =====
+    // Viewer state tracks the active session: which course is open, when it started,
+    // and the interval timers driving watermark refresh + reading-time display.
     const Viewer = { courseId:null, title:null, startedAt:0, timer:null, lastProgressBump:0 };
+    // Module-private timers — separate from Viewer.timer so we can clear them cleanly
+    // on close even if the viewer was opened multiple times in one session.
+    let _readingTimer = null;
+    let _focusModeTimer = null;
+    let _viewerMouseHandler = null;
 
     function getDrivePreviewUrl(url){
         if(!url) return '';
@@ -8949,10 +9106,13 @@
         const stamp = new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
         const shortId = String(u.id).slice(0,8);
         const text = Utils.escapeHtml(u.name) + ' \u2022 ' + Utils.escapeHtml(u.email) + ' \u2022 ' + stamp + ' \u2022 #' + shortId;
-        // 3x density: more rows, more copies per row, tighter spacing — still no overlap (flex gap controls spacing).
+        // v1.6.31 — Density REDUCED 30% per UX request. CSS also widens gap (90→110px)
+        // and drops opacity (0.13→0.11), so visually it's even calmer.
+        //   Before: desktop 36×12 = 432 spans, mobile 30×9 = 270 spans
+        //   After:  desktop 25×12 = 300 spans (-30.5%), mobile 21×9 = 189 spans (-30.0%)
         const isMobile = window.innerWidth < 700;
-        const rowCount = isMobile ? 30 : 36;
-        const perRow = isMobile ? 9 : 12;
+        const rowCount = isMobile ? 21 : 25;
+        const perRow   = isMobile ? 9  : 12;
         const rows = [];
         for(let r=0; r<rowCount; r++){
             let row = '<div class="pdf-watermark-row">';
@@ -8963,16 +9123,91 @@
         tile.innerHTML = rows.join('');
     }
 
+    // ---------- Elite Viewer Helpers ----------
+    function pdfFmtMMSS(sec){
+        sec = Math.max(0, Math.floor(sec));
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        return (m < 100 ? String(m).padStart(2,'0') : String(m)) + ':' + String(s).padStart(2,'0');
+    }
+    function pdfUpdateReadingTimer(){
+        if(!Viewer.startedAt) return;
+        const el = document.getElementById('pdfViewerTimer');
+        if(el) el.textContent = pdfFmtMMSS((Date.now() - Viewer.startedAt) / 1000);
+    }
+    function pdfShowChrome(){
+        // Reveal the header + corner badge and re-arm the auto-dim timer.
+        document.getElementById('pdfViewerBar')?.classList.remove('dimmed');
+        document.getElementById('pdfSecureCorner')?.classList.remove('dimmed');
+        if(_focusModeTimer) clearTimeout(_focusModeTimer);
+        _focusModeTimer = setTimeout(() => {
+            if(!document.getElementById('pdfViewer')?.classList.contains('active')) return;
+            document.getElementById('pdfViewerBar')?.classList.add('dimmed');
+            document.getElementById('pdfSecureCorner')?.classList.add('dimmed');
+        }, 5500);
+    }
+    function pdfTogglePdfFullscreen(){
+        const el = document.getElementById('pdfViewer');
+        if(!el) return;
+        try {
+            if(!document.fullscreenElement && !document.webkitFullscreenElement){
+                const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+                if(req) req.call(el).catch(()=> showToast('Fullscreen is not available right now','warning'));
+                else showToast('Fullscreen is not supported in this browser','warning');
+            } else {
+                const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+                if(exit) exit.call(document).catch(()=>{});
+            }
+        } catch(_) { /* swallow — UX only */ }
+    }
+    function pdfReloadFrame(){
+        const f = document.getElementById('pdfViewerFrame'); if(!f) return;
+        const splash = document.getElementById('pdfLoadingSplash');
+        const bar    = document.getElementById('pdfLoadBar');
+        splash?.classList.remove('done');
+        bar?.classList.remove('done');
+        const url = f.src;
+        f.src = 'about:blank';
+        // Brief tick so the browser realises the navigation, then re-arm the same URL.
+        setTimeout(() => { f.src = url; }, 100);
+    }
+
     async function openSecureViewer(courseId, pdfUrl, title){
         if(!APP.currentUser){ openModal('login'); showToast('Please login to view notes','warning'); return; }
         if(!pdfUrl){ showToast('Notes link not configured. Contact admin.','warning'); return; }
         Viewer.courseId = courseId; Viewer.title = title || 'Course'; Viewer.startedAt = Date.now(); Viewer.lastProgressBump = Date.now();
         document.getElementById('pdfViewerTitle').textContent = '\u{1F4D6} ' + Viewer.title;
-        document.getElementById('pdfViewerMeta').textContent = (APP.currentUser.email || '') + ' \u2022 viewing securely';
-        document.getElementById('pdfViewerFrame').src = getDrivePreviewUrl(pdfUrl);
+        document.getElementById('pdfViewerMeta').textContent = (APP.currentUser.email || '') + ' \u2022 secure session';
+        // Reset reading timer display to 00:00 so the first second tick is the only delta.
+        const timerEl = document.getElementById('pdfViewerTimer'); if(timerEl) timerEl.textContent = '00:00';
+
+        // Show loading splash + shimmer load bar; they hide once the iframe fires `load`.
+        const splash = document.getElementById('pdfLoadingSplash');
+        const loadBar = document.getElementById('pdfLoadBar');
+        splash?.classList.remove('done');
+        loadBar?.classList.remove('done');
+
+        const frame = document.getElementById('pdfViewerFrame');
+        // Wire `load` BEFORE assigning src so we never miss the event. Drive's preview is
+        // cross-origin, but `load` still fires on the parent — we just can't read the doc.
+        frame.onload = () => {
+            // Drive sometimes fires `load` before the PDF actually renders; the short delay
+            // bridges that gap so the splash doesn't disappear into an empty white frame.
+            setTimeout(() => {
+                splash?.classList.add('done');
+                loadBar?.classList.add('done');
+            }, 600);
+        };
+        frame.src = getDrivePreviewUrl(pdfUrl);
+
         buildWatermarkGrid();
-    Overlay.open('pdfViewer', { initialFocusSelector: '.pdf-viewer-bar .btn' });
-        // Periodic watermark refresh + progress bump
+        Overlay.open('pdfViewer', { initialFocusSelector: '.pdf-viewer-bar .pdf-close-btn' });
+
+        // Reading-time HUD: ticks every second.
+        if(_readingTimer) clearInterval(_readingTimer);
+        _readingTimer = setInterval(pdfUpdateReadingTimer, 1000);
+
+        // Periodic watermark refresh + progress bump (every 25s, same as before)
         Viewer.timer = setInterval(()=>{
             buildWatermarkGrid();
             // Every 60s of viewing bumps progress +3% (cap 100) and logs a session ping
@@ -8981,17 +9216,51 @@
                 bumpProgress(Viewer.courseId, 3);
             }
         }, 25000);
+
+        // Focus-mode: dim the bar + corner after 5.5s of mouse/touch inactivity. Hovering
+        // the bar re-reveals it via CSS :hover. Wired once (idempotent on re-open).
+        const viewerEl = document.getElementById('pdfViewer');
+        if(viewerEl && !_viewerMouseHandler){
+            _viewerMouseHandler = () => pdfShowChrome();
+            viewerEl.addEventListener('mousemove', _viewerMouseHandler, { passive: true });
+            viewerEl.addEventListener('touchstart', _viewerMouseHandler, { passive: true });
+            viewerEl.addEventListener('keydown',    _viewerMouseHandler, { passive: true });
+        }
+        pdfShowChrome(); // start the auto-hide timer immediately
+
+        // Wire the new icon buttons (idempotent — onclick replaces any prior handler).
+        const reloadBtn = document.getElementById('pdfReloadBtn');
+        if(reloadBtn) reloadBtn.onclick = pdfReloadFrame;
+        const fsBtn = document.getElementById('pdfFullscreenBtn');
+        if(fsBtn) fsBtn.onclick = pdfTogglePdfFullscreen;
+
         // Log view start
         logCourseView(courseId, 'open', 0);
     }
 
     function closeSecureViewer(){
         if(Viewer.timer){ clearInterval(Viewer.timer); Viewer.timer=null; }
+        if(_readingTimer){ clearInterval(_readingTimer); _readingTimer=null; }
+        if(_focusModeTimer){ clearTimeout(_focusModeTimer); _focusModeTimer=null; }
         const seconds = Viewer.startedAt ? Math.round((Date.now()-Viewer.startedAt)/1000) : 0;
         if(Viewer.courseId) logCourseView(Viewer.courseId, 'close', seconds);
         if(Viewer.courseId && seconds>10) recordStudySession(Viewer.courseId, seconds);
+        // Exit fullscreen if we entered it from the viewer — otherwise the user is left in
+        // fullscreen looking at the page underneath, which feels broken.
+        try {
+            if(document.fullscreenElement || document.webkitFullscreenElement){
+                const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                if(exit) exit.call(document).catch(()=>{});
+            }
+        } catch(_) {}
         Overlay.close('pdfViewer');
         document.getElementById('pdfViewerFrame').src = 'about:blank';
+        // Reset dim state so the next open starts with a fully visible chrome.
+        document.getElementById('pdfViewerBar')?.classList.remove('dimmed');
+        document.getElementById('pdfSecureCorner')?.classList.remove('dimmed');
+        // Reset splash so the next open shows it again (otherwise stale `.done` persists).
+        document.getElementById('pdfLoadingSplash')?.classList.remove('done');
+        document.getElementById('pdfLoadBar')?.classList.remove('done');
         Viewer.courseId=null; Viewer.title=null; Viewer.startedAt=0;
         // Refresh dashboard data if open
         if(document.getElementById('dashboardOverlay').classList.contains('active')) renderDashboard();
@@ -9022,7 +9291,7 @@
         try { await db.from('enrollments').update({progress:newProg}).eq('id',e.id); } catch(err){}
     }
 
-    // ===== ANTI-PIRACY GUARDS =====
+    // ===== ANTI-PIRACY GUARDS — v1.6.31 hardened =====
     (function setupGuards(){
         // Block context menu in viewer (already attribute) + global Ctrl+S / Ctrl+P / Ctrl+Shift+S / PrintScreen while viewer open
         document.addEventListener('keydown', e => {
@@ -9037,7 +9306,41 @@
                 e.preventDefault();
             }
             if(k==='f12' || ((e.ctrlKey||e.metaKey) && e.shiftKey && ['i','j','c'].includes(k))){ e.preventDefault(); }
+            // v1.6.31 — Escape closes the viewer cleanly (was previously routed through Overlay's
+            // generic Escape, which fired but also called Overlay.close without our timer cleanup).
+            if(e.key === 'Escape'){ e.preventDefault(); closeSecureViewer(); }
         }, true);
+
+        // v1.6.31 — Block copy / cut anywhere while the viewer is open. The iframe is
+        // cross-origin so its inner selection can't be copied via JS anyway, but this
+        // catches selection-copy of the wrapper page (e.g. someone trying to drag-select
+        // the watermark text overlay) and gives a clear UX signal that copying is off.
+        document.addEventListener('copy', e => {
+            if(document.getElementById('pdfViewer')?.classList.contains('active')){
+                e.preventDefault();
+                showToast('Copying is disabled for protected content','warning');
+            }
+        });
+        document.addEventListener('cut', e => {
+            if(document.getElementById('pdfViewer')?.classList.contains('active')){ e.preventDefault(); }
+        });
+
+        // v1.6.31 — Print kill switch. If the user invokes print via the OS / browser
+        // menu (which bypasses our keydown listener on most browsers), the `beforeprint`
+        // event fires BEFORE the print dialog samples the DOM — so we activate the black
+        // blocker AND the @media print CSS in the stylesheet blanks the body. Belt &
+        // braces: any successful print run still shows only a "Printing is disabled" notice.
+        window.addEventListener('beforeprint', () => {
+            if(document.getElementById('pdfViewer')?.classList.contains('active')){
+                const b = document.getElementById('pdfBlocker'); if(b){ b.classList.add('active'); }
+                showToast('Printing is disabled for protected content','warning');
+            }
+        });
+        // Clear the blocker after the print dialog closes so the user can resume reading.
+        window.addEventListener('afterprint', () => {
+            document.getElementById('pdfBlocker')?.classList.remove('active');
+        });
+
         // Detect tab visibility loss (possible screenshot tool) -> just log
         document.addEventListener('visibilitychange', ()=>{
             if(document.hidden && document.getElementById('pdfViewer')?.classList.contains('active') && Viewer.courseId){
