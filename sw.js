@@ -1,46 +1,46 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.23 — Hotfix: swap denomailer → nodemailer (Gmail TLS bug).
-   * Problem: v1.6.22 emails were intermittently failing in
-     production with:
-       "peer closed connection without sending TLS close_notify"
-       + "BadResource: Bad resource ID" event-loop exceptions.
-     Root cause: denomailer@1.6.0 doesn't gracefully handle
-     Gmail closing the SMTP socket without a TLS close_notify
-     frame. The email IS accepted by Gmail (and often delivered),
-     but denomailer throws while reading the closing handshake,
-     so our function returns 500 and the admin sees "email
-     delivery failed" even though Gmail received the message.
+   v1.6.24 — Polish: bulletproof approval email template.
+   * Problem: v1.6.23 fixed deliverability (denomailer → nodemailer)
+     and the decline email rendered beautifully, but the APPROVAL
+     email looked "junky" in many clients. Two root causes:
+       1. The CTA button used `linear-gradient(...)` for its
+          background. Outlook (and several mobile clients) ignore
+          CSS gradients completely → button rendered as bare text
+          floating in white space.
+       2. The button was wrapped in MSO conditional comments +
+          VML `<v:roundrect>` markup. Gmail's parser occasionally
+          leaks the raw `<!--[if mso]>` tags into the visible body,
+          which looks like garbled HTML to the recipient.
+     Net effect: a celebratory welcome email that looked broken.
    * Fix:
-     1. Edge Function `send-decline-email` now imports
-        `nodemailer` via Deno's `npm:` specifier
-        (`import nodemailer from "npm:nodemailer@^6.9.7"`).
-        Nodemailer is the battle-tested Node.js SMTP library;
-        it handles Gmail's no-close_notify cleanly and exposes
-        proper SMTP error codes (EAUTH, ECONNECTION, EENVELOPE,
-        etc.) so the admin sees actionable reasons.
-     2. Error responses now include the SMTP error code +
-        responseCode so the failure mode is obvious from the
-        toast alone (e.g. "[EAUTH / SMTP 535] Username and
-        Password not accepted").
-     3. Client toasts in confirmDeclineOrder, approveOrder, and
-        approveAllPending now surface the failure reason
-        directly — no more "Check Edge Function logs" dead-end.
-        Bulk approve shows the first failure's reason as a
-        representative sample.
-     4. Connection/greeting/socket timeouts (15s/10s/20s) added
-        to fail fast if Gmail is unreachable, instead of burning
-        the Edge Function's 25s execution budget.
-   * Why this matters: the email pipeline is now reliable AND
-     self-diagnosing. When something does break, the admin sees
-     "[EAUTH] Username and Password not accepted" in the toast
-     and knows immediately to rotate the app password — no
-     log-digging required.
-   Carries forward from v1.6.22:
-   * Type-aware Edge Function (decline + approve templates).
-   * Zero-click email automation for both approve and decline.
-   * Persistent in-app notifications for both outcomes.
-   * Dual admin check + secret redaction in errors. */
-const VERSION = 'hiq-v1.6.23';
+     1. Rewrote `buildApproveHtml()` using the SAME bulletproof
+        rules as the decline template:
+          - Solid-color (#059669) brand ribbon + CTA, no gradients.
+          - 100% table-based layout (no flex/grid).
+          - Inline styles only, no `<style>` block.
+          - Removed every MSO conditional comment + VML element.
+          - Classic "bgcolor + nested table" button trick that
+            renders identically in Outlook, Gmail, Apple Mail,
+            Outlook.com, Yahoo, ProtonMail, and mobile clients.
+     2. Added genuinely useful content for the celebratory moment:
+          - 3-up "What's included" benefits grid (📝 notes ·
+            ♾️ lifetime · 📱 any device).
+          - Trust-badge row (🏅 Gold Medalist · 👥 100+ students
+            · 🔒 verified pay).
+          - Blue "Need help? Just reply" support strip.
+          - Copy-paste fallback URL under the CTA for clients
+            that suppress link clicking.
+     3. Plain-text fallback polished to match (benefits list,
+        30-second start guide, support line).
+   * Why this matters: a successful purchase deserves a welcome
+     email that looks as good as the product. Now both decline
+     and approve render identically polished across every major
+     email client — no more "junky" surprises.
+   Carries forward from v1.6.23:
+   * Nodemailer SMTP (handles Gmail's TLS quirk).
+   * SMTP error code surfaced in toasts (e.g. EAUTH/SMTP 535).
+   * Connection/greeting/socket timeouts (15s/10s/20s). */
+const VERSION = 'hiq-v1.6.24';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

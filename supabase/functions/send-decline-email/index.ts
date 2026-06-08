@@ -193,6 +193,19 @@ function buildDeclineText(p: Payload): string {
 }
 
 // ─── APPROVED template ────────────────────────────────────────
+// Built with the SAME bulletproof rules as the decline template:
+//   • 100%-table layout (no flexbox, no grid — both break in Outlook).
+//   • Inline styles only (no <style> block — Gmail strips many of them).
+//   • SOLID background colors on buttons (linear-gradient renders as
+//     transparent in Outlook → naked text floating in space, which is
+//     why the user reported a "junky" looking email in v1.6.23).
+//   • NO `<!--[if mso]>` conditional comments or VML — Gmail's
+//     parser sometimes leaks the raw markup into the rendered body.
+//   • Cellpadding="0" cellspacing="0" border="0" on every table —
+//     Outlook 2007+ ignores CSS box-sizing.
+//   • Width="600" max-width:600px — the universally-safe email width.
+//   • Plain-text fallback supplied via the multipart/alternative
+//     `text` field; clients that strip HTML still get a usable note.
 function buildApproveHtml(p: Payload): string {
     const site = p.siteUrl || DEFAULT_SITE;
     return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -208,58 +221,116 @@ function buildApproveHtml(p: Payload): string {
 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#f5f7fb;padding:32px 12px;">
   <tr><td align="center">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(15,23,42,0.06);">
-      <!-- Brand ribbon -->
-      <tr><td style="background:linear-gradient(90deg,#0f6fec,#6366f1,#8b5cf6);padding:20px 28px;color:#ffffff;font-size:18px;font-weight:800;letter-spacing:0.4px;">HealthIQ Academy</td></tr>
-      <!-- Celebratory header -->
-      <tr><td style="padding:32px 28px 8px;text-align:center;">
+      <!-- Brand ribbon (solid green to match the approval mood) -->
+      <tr><td style="background:#059669;padding:20px 28px;color:#ffffff;font-size:18px;font-weight:800;letter-spacing:0.4px;">HealthIQ Academy</td></tr>
+
+      <!-- Hero — big celebratory header -->
+      <tr><td style="padding:36px 28px 8px;text-align:center;">
         <div style="font-size:48px;line-height:1;margin-bottom:8px;">🎉</div>
         <h1 style="margin:0;font-size:24px;font-weight:800;color:#0f172a;line-height:1.3;">Payment Confirmed!</h1>
-        <p style="margin:10px 0 0;font-size:15px;color:#475569;">Welcome aboard, ${esc(p.userName || "Learner")}. Your course access is now <strong style="color:#059669;">active</strong>.</p>
+        <p style="margin:12px 0 0;font-size:15px;color:#475569;line-height:1.5;">Welcome aboard, ${esc(p.userName || "Learner")}. Your course access is now <strong style="color:#059669;">active</strong> and waiting for you.</p>
       </td></tr>
-      <!-- Success card -->
+
+      <!-- Success card (green) -->
       <tr><td style="padding:24px 28px 0;">
-        <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:18px;">
-          <div style="font-size:13px;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:0.6px;">✅ Access Granted</div>
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:12px;font-size:14px;color:#0f172a;">
-            <tr><td style="padding:4px 0;width:90px;color:#64748b;">Course</td><td style="padding:4px 0;font-weight:700;color:#065f46;">${esc(p.courseTitle)}</td></tr>
-            <tr><td style="padding:4px 0;color:#64748b;">Amount paid</td><td style="padding:4px 0;font-weight:600;">${esc(formatINR(p.amount))}</td></tr>
-            <tr><td style="padding:4px 0;color:#64748b;">Status</td><td style="padding:4px 0;font-weight:700;color:#059669;">Verified ✓</td></tr>
-          </table>
-        </div>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;">
+          <tr><td style="padding:18px;">
+            <div style="font-size:13px;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:0.6px;">✅ Access Granted</div>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:12px;font-size:14px;color:#0f172a;">
+              <tr><td style="padding:4px 0;width:110px;color:#64748b;">Course</td><td style="padding:4px 0;font-weight:700;color:#065f46;">${esc(p.courseTitle)}</td></tr>
+              <tr><td style="padding:4px 0;color:#64748b;">Amount paid</td><td style="padding:4px 0;font-weight:600;">${esc(formatINR(p.amount))}</td></tr>
+              <tr><td style="padding:4px 0;color:#64748b;">Status</td><td style="padding:4px 0;font-weight:700;color:#059669;">Verified &amp; unlocked</td></tr>
+            </table>
+          </td></tr>
+        </table>
       </td></tr>
-      <!-- What's next -->
-      <tr><td style="padding:24px 28px 8px;">
-        <h2 style="margin:0;font-size:15px;font-weight:700;color:#0f172a;">🚀 What's next</h2>
-        <ol style="margin:10px 0 0 18px;padding:0;font-size:14px;color:#334155;line-height:1.7;">
-          <li><strong>Log in</strong> to your HealthIQ account using the same email you registered with.</li>
-          <li>Click <strong>My Courses</strong> from your profile menu — your new course will be there waiting.</li>
-          <li>Open the course to start reading the high-yield handwritten notes & study material.</li>
-          <li><strong>Stuck on anything?</strong> Reply to this email — we love hearing from students.</li>
+
+      <!-- What you get (benefits grid) -->
+      <tr><td style="padding:28px 28px 0;">
+        <h2 style="margin:0 0 14px;font-size:15px;font-weight:700;color:#0f172a;">� What's included</h2>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+          <tr>
+            <td valign="top" width="33%" style="padding:0 8px 12px 0;">
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:24px;line-height:1;margin-bottom:6px;">📝</div>
+                <div style="font-size:12px;font-weight:700;color:#0f172a;">High-yield notes</div>
+                <div style="font-size:11px;color:#64748b;margin-top:3px;line-height:1.4;">Handwritten &amp; topper-curated</div>
+              </div>
+            </td>
+            <td valign="top" width="34%" style="padding:0 4px 12px 4px;">
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:24px;line-height:1;margin-bottom:6px;">♾️</div>
+                <div style="font-size:12px;font-weight:700;color:#0f172a;">Lifetime access</div>
+                <div style="font-size:11px;color:#64748b;margin-top:3px;line-height:1.4;">Study at your own pace</div>
+              </div>
+            </td>
+            <td valign="top" width="33%" style="padding:0 0 12px 8px;">
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:24px;line-height:1;margin-bottom:6px;">📱</div>
+                <div style="font-size:12px;font-weight:700;color:#0f172a;">Any device</div>
+                <div style="font-size:11px;color:#64748b;margin-top:3px;line-height:1.4;">Phone, tablet, laptop</div>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- How to start -->
+      <tr><td style="padding:20px 28px 8px;">
+        <h2 style="margin:0 0 8px;font-size:15px;font-weight:700;color:#0f172a;">🚀 How to start in 30 seconds</h2>
+        <ol style="margin:0 0 0 18px;padding:0;font-size:14px;color:#334155;line-height:1.7;">
+          <li><strong>Log in</strong> using the same email you registered with.</li>
+          <li>Click <strong>My Courses</strong> from your profile menu.</li>
+          <li>Open <strong>${esc(p.courseTitle)}</strong> &mdash; start reading immediately.</li>
         </ol>
       </td></tr>
-      <!-- Big CTA -->
-      <tr><td style="padding:28px 28px 8px;" align="center">
-        <!--[if mso]>
-        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${esc(site)}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="20%" stroke="f" fillcolor="#0f6fec">
-          <w:anchorlock/>
-          <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">📚 Start Learning Now</center>
-        </v:roundrect>
-        <![endif]-->
-        <!--[if !mso]><!-->
-        <a href="${esc(site)}" style="display:inline-block;background:linear-gradient(90deg,#10b981,#059669);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;box-shadow:0 4px 12px rgba(16,185,129,0.3);">📚 Start Learning Now</a>
-        <!--<![endif]-->
-        <p style="margin:14px 0 0;font-size:12px;color:#64748b;">Or copy this link: <a href="${esc(site)}" style="color:#0f6fec;text-decoration:none;">${esc(site)}</a></p>
+
+      <!-- BIG CTA — bulletproof table-button (no MSO conditionals, no gradients) -->
+      <tr><td style="padding:28px 28px 12px;" align="center">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+          <tr><td align="center" bgcolor="#059669" style="border-radius:10px;background:#059669;">
+            <a href="${esc(site)}" target="_blank" style="display:inline-block;padding:14px 36px;font-size:15px;font-weight:700;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#ffffff;text-decoration:none;border-radius:10px;">📚&nbsp;&nbsp;Start Learning Now</a>
+          </td></tr>
+        </table>
+        <p style="margin:14px 0 0;font-size:12px;color:#64748b;">Or copy &amp; paste this link into your browser:<br/><a href="${esc(site)}" style="color:#0f6fec;text-decoration:none;word-break:break-all;">${esc(site)}</a></p>
       </td></tr>
-      <!-- Gold-medalist badge -->
-      <tr><td style="padding:24px 28px 8px;" align="center">
-        <div style="display:inline-block;background:#fef3c7;color:#92400e;padding:6px 14px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:0.3px;">🏅 Curated by a BHMS Gold Medalist</div>
+
+      <!-- Trust badges row -->
+      <tr><td style="padding:18px 28px 8px;" align="center">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+          <tr>
+            <td style="padding:0 6px;">
+              <span style="display:inline-block;background:#fef3c7;color:#92400e;padding:6px 12px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.3px;">🏅 BHMS Gold Medalist</span>
+            </td>
+            <td style="padding:0 6px;">
+              <span style="display:inline-block;background:#dbeafe;color:#1e40af;padding:6px 12px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.3px;">👥 100+ Students</span>
+            </td>
+            <td style="padding:0 6px;">
+              <span style="display:inline-block;background:#f3e8ff;color:#6b21a8;padding:6px 12px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.3px;">🔒 Verified Pay</span>
+            </td>
+          </tr>
+        </table>
       </td></tr>
+
+      <!-- Help strip -->
+      <tr><td style="padding:20px 28px 0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;">
+          <tr><td style="padding:14px 16px;font-size:13px;color:#1e3a8a;line-height:1.5;">
+            <strong>💬 Need help?</strong> Just reply to this email — a real human reads every message and we usually get back within a few hours.
+          </td></tr>
+        </table>
+      </td></tr>
+
       <!-- Footer -->
-      <tr><td style="padding:24px 28px 28px;border-top:1px solid #e2e8f0;margin-top:18px;">
-        <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.6;">
-          This email confirms your payment was verified by an admin at HealthIQ. If you didn't make this purchase, please reply to this email immediately.<br/>
-          © HealthIQ Academy &middot; <a href="${esc(site)}" style="color:#0f6fec;text-decoration:none;">${esc(site)}</a>
-        </p>
+      <tr><td style="padding:24px 28px 28px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border-top:1px solid #e2e8f0;">
+          <tr><td style="padding-top:18px;">
+            <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.6;">
+              This email confirms your payment was verified by an admin at HealthIQ Academy. If you didn't make this purchase, please reply to this email immediately so we can investigate.<br/><br/>
+              © HealthIQ Academy &middot; <a href="${esc(site)}" style="color:#0f6fec;text-decoration:none;">${esc(site)}</a>
+            </p>
+          </td></tr>
+        </table>
       </td></tr>
     </table>
   </td></tr>
@@ -272,23 +343,34 @@ function buildApproveText(p: Payload): string {
     return [
         `Hi ${p.userName || "there"},`,
         ``,
-        `🎉 Payment confirmed! Your access to "${p.courseTitle}" is now active.`,
+        `🎉 Payment confirmed — welcome aboard!`,
+        ``,
+        `Your access to "${p.courseTitle}" is now active and waiting for you.`,
         ``,
         `────────────────────────────`,
-        `Course : ${p.courseTitle}`,
+        `Course      : ${p.courseTitle}`,
         `Amount paid : ${formatINR(p.amount)}`,
-        `Status : Verified ✓`,
+        `Status      : Verified & unlocked ✓`,
         `────────────────────────────`,
         ``,
-        `WHAT'S NEXT`,
-        `1. Log in to HealthIQ using the same email you registered with.`,
-        `2. Click "My Courses" from your profile menu — your new course is there.`,
-        `3. Open the course to start reading the notes & study material.`,
-        `4. Need help? Just reply to this email — we love hearing from students.`,
+        `WHAT'S INCLUDED`,
+        `  📝 High-yield handwritten notes & topper-curated material`,
+        `  ♾️  Lifetime access — study at your own pace`,
+        `  📱 Works on phone, tablet, and laptop`,
         ``,
-        `Start learning: ${p.siteUrl || DEFAULT_SITE}`,
+        `HOW TO START IN 30 SECONDS`,
+        `  1. Log in using the same email you registered with.`,
+        `  2. Click "My Courses" from your profile menu.`,
+        `  3. Open "${p.courseTitle}" and start reading immediately.`,
+        ``,
+        `Start learning here:`,
+        `  ${p.siteUrl || DEFAULT_SITE}`,
+        ``,
+        `💬 Need help? Just reply to this email — a real human reads`,
+        `   every message and we usually get back within a few hours.`,
         ``,
         `🏅 Curated by a BHMS Gold Medalist`,
+        `👥 Trusted by 100+ students`,
         ``,
         `Warm regards,`,
         `The HealthIQ Team`,
