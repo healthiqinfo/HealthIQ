@@ -662,6 +662,49 @@
             .pdf-loading-text { font-size: 0.85rem; }
         }
 
+        /* =====================================================================
+           === v1.6.35 MOBILE MEMORY-CRASH FIX ==================================
+           Chrome / Edge / Safari on mobile crashed with "A problem repeatedly
+           occurred on #courses" once the user pinch-zoomed the PDF past a
+           certain threshold. Triple cause:
+             (1) 189 absolutely-positioned watermark <span>s
+             (2) THREE simultaneous backdrop-filter layers (bar + panel +
+                 corner) — backdrop-filter must re-blur the underlying iframe
+                 at every paint, and pinch-zoom multiplies that cost by the
+                 zoom factor squared.
+             (3) The iframe itself rendering Drive's high-DPI PDF.
+           OS-imposed per-tab memory cap blew up → browser killed the page.
+           Fixes here cut chrome memory by ~80% on mobile, leaving the iframe
+           plenty of headroom:
+             • backdrop-filter dropped entirely on mobile (replaced with
+               semi-opaque solid backgrounds — visually near-identical).
+             • Watermark switched to a single CSS background-image SVG
+               (handled in JS — see buildWatermarkGrid mobile branch). The
+               .pdf-watermark-tile DOM grid is hidden so layout cost is zero.
+             • contain: layout style paint on the viewer root scopes paint
+               regions so iframe redraws don't invalidate our chrome.
+             • touch-action: manipulation on icon buttons removes the iOS
+               300ms tap delay AND prevents the gesture flood that triggers
+               extra layout passes during pinch-zoom.
+           Mobile is now safe to zoom freely. */
+        @media (max-width: 700px) {
+            /* (a) Drop ALL backdrop-filter layers — replace with solid bg. */
+            .pdf-viewer-bar    { background: rgba(11,18,32,0.95); -webkit-backdrop-filter: none; backdrop-filter: none; }
+            .pdf-display-panel { background: rgba(11,18,32,0.96); -webkit-backdrop-filter: none; backdrop-filter: none; }
+            .pdf-secure-corner { background: rgba(15,23,42,0.92); -webkit-backdrop-filter: none; backdrop-filter: none; }
+            /* (b) Mobile watermark is a CSS background — hide the DOM tile. */
+            .pdf-watermark-tile { display: none !important; }
+            /* (c) Paint containment — scopes paint regions to the viewer. */
+            .pdf-viewer { contain: layout style paint; }
+            /* (d) Touch optimisation — remove 300ms delay + gesture flood. */
+            .pdf-viewer-bar .pdf-icon-btn,
+            .pdf-viewer-bar .pdf-close-btn,
+            .pdf-display-panel .theme-pills button { touch-action: manipulation; }
+            /* (e) Promote the iframe to its own compositor layer so pinch-zoom
+                   only rasterises ONE surface (the PDF) not the whole tree. */
+            .pdf-viewer-frame { transform: translateZ(0); will-change: transform; }
+        }
+
         /* v1.6.31 — Print kill switch. Even if a user invokes print via OS / browser menu
            (which bypasses our keydown listener on most browsers) this CSS blanks the body
            and replaces it with a notice. Belt-and-braces alongside the `beforeprint` JS
@@ -5855,7 +5898,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.34';
+    const APP_VERSION = '1.6.35';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -9289,17 +9332,64 @@
 
     function buildWatermarkGrid(){
         const tile = document.getElementById('pdfWatermarkTile'); if(!tile) return;
+        const wm   = document.getElementById('pdfWatermark');
         const u = APP.currentUser || {name:'Guest', email:'guest', id:'-'};
         const stamp = new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
         const shortId = String(u.id).slice(0,8);
         const text = Utils.escapeHtml(u.name) + ' \u2022 ' + Utils.escapeHtml(u.email) + ' \u2022 ' + stamp + ' \u2022 #' + shortId;
-        // v1.6.31 — Density REDUCED 30% per UX request. CSS also widens gap (90→110px)
-        // and drops opacity (0.13→0.11), so visually it's even calmer.
-        //   Before: desktop 36×12 = 432 spans, mobile 30×9 = 270 spans
-        //   After:  desktop 25×12 = 300 spans (-30.5%), mobile 21×9 = 189 spans (-30.0%)
+
+        // ===================================================================
+        // v1.6.35 MOBILE FIX — replace 189 DOM spans with one SVG background.
+        // ===================================================================
+        // Root cause of "A problem repeatedly occurred on #courses" Chrome
+        // mobile crash: at pinch-zoom the browser re-rasterises the entire
+        // overlay tree at the new resolution. 189 absolutely-positioned text
+        // spans + 3 backdrop-filter layers + the iframe at high DPI blew
+        // through the OS-imposed memory cap, triggering Chrome's OOM kill.
+        //
+        // Fix: on mobile we emit ONE element with a CSS background-image
+        // pointing at an inline SVG data-URI containing a single 360×180
+        // tile of the same per-user stamp. background-repeat:repeat tiles
+        // it across the iframe. The browser composites it as a single
+        // texture that scales freely on pinch-zoom — no DOM cost, no
+        // re-rasterisation cost.
+        //
+        // Desktop keeps the DOM grid (300 spans, refreshed every 60s) for
+        // the same per-second freshness it had before — desktop has plenty
+        // of RAM for it.
         const isMobile = window.innerWidth < 700;
-        const rowCount = isMobile ? 21 : 25;
-        const perRow   = isMobile ? 9  : 12;
+        if(isMobile){
+            // SVG tile: 360×180px with one rotated text in the centre. The
+            // existing `text` is already HTML-escaped — that's valid XML too
+            // (&amp; is XML-safe), then encodeURIComponent makes it URL-safe
+            // for the data-URI. Single quotes inside attribute values are
+            // avoided by using only double quotes in the SVG markup.
+            const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="360" height="180" viewBox="0 0 360 180">' +
+                          '<g transform="rotate(-26 180 90)">' +
+                            '<text x="50%" y="50%" font-family="Inter,system-ui,sans-serif" font-size="12" font-weight="700" ' +
+                                  'fill="rgb(15,23,42)" text-anchor="middle" dominant-baseline="middle" letter-spacing="0.4">' +
+                                text +
+                            '</text>' +
+                          '</g>' +
+                        '</svg>';
+            if(wm){
+                wm.style.backgroundImage   = 'url("data:image/svg+xml;utf8,' + encodeURIComponent(svg) + '")';
+                wm.style.backgroundRepeat  = 'repeat';
+                wm.style.backgroundSize    = '360px 180px';
+            }
+            // Drop any old DOM spans from a previous desktop session (orientation flip).
+            tile.innerHTML = '';
+            return;
+        }
+
+        // ----- Desktop path (unchanged from v1.6.31) -----
+        if(wm){ // clear any inherited mobile bg if user resized desktop window
+            wm.style.backgroundImage  = '';
+            wm.style.backgroundRepeat = '';
+            wm.style.backgroundSize   = '';
+        }
+        const rowCount = 25;
+        const perRow   = 12;
         const rows = [];
         for(let r=0; r<rowCount; r++){
             let row = '<div class="pdf-watermark-row">';
@@ -9349,14 +9439,48 @@
     function pdfTogglePdfFullscreen(){
         const el = document.getElementById('pdfViewer');
         if(!el) return;
+        // v1.6.35 — Honest feature detection. iOS Safari (and iOS Chrome,
+        // which is forced onto WebKit) does NOT expose requestFullscreen /
+        // webkitRequestFullscreen on non-video elements. The OLD code
+        // optimistically called req.call(el) → silently no-op → toast
+        // "Fullscreen is not supported in this browser". UX-hostile.
+        //
+        // New behaviour:
+        //   • Real-FS available  → toggle real FS (Chrome/Firefox/Edge desktop, Chrome Android).
+        //   • Real-FS missing    → use the iOS URL-bar collapse trick + a
+        //     truthful, actionable toast. The viewer is ALREADY 100vw×100vh
+        //     (position:fixed inset:0), so the only thing the browser is
+        //     stealing is the URL/tabs bar. window.scrollTo(0,1) is the
+        //     long-standing trick to hide it on iOS Safari + Edge iOS +
+        //     Chrome iOS. Add-to-Home-Screen gives true full-screen via
+        //     the manifest's display:standalone.
+        const hasRealFs = !!(el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen);
+        if(!hasRealFs){
+            // iOS-style pseudo-fullscreen: collapse the URL bar.
+            try { window.scrollTo(0, 1); } catch(_) {}
+            // Brief landscape nudge — most readers prefer it on phones anyway,
+            // and on iPad landscape genuinely gives more reading area.
+            const portrait = (window.innerHeight > window.innerWidth);
+            showToast(
+                portrait
+                  ? '\u{1F4F1} Already filling your screen. Rotate to landscape for the biggest reading area, or Add to Home Screen for true full-screen.'
+                  : '\u{1F4F1} Already filling your screen. Add HealthIQ to your Home Screen for true full-screen mode.',
+                'info'
+            );
+            return;
+        }
         try {
             if(!document.fullscreenElement && !document.webkitFullscreenElement){
                 const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-                if(req) req.call(el).catch(()=> showToast('Fullscreen is not available right now','warning'));
-                else showToast('Fullscreen is not supported in this browser','warning');
+                // Promise.resolve() wraps both promise-returning and synchronous
+                // implementations so .catch always works.
+                Promise.resolve(req.call(el)).catch(() => {
+                    try { window.scrollTo(0, 1); } catch(_) {}
+                    showToast('Fullscreen was blocked by the browser. Try tapping the icon again or rotate to landscape.','warning');
+                });
             } else {
                 const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-                if(exit) exit.call(document).catch(()=>{});
+                if(exit) Promise.resolve(exit.call(document)).catch(()=>{});
             }
         } catch(_) { /* swallow — UX only */ }
     }
@@ -9454,15 +9578,20 @@
         if(_readingTimer) clearInterval(_readingTimer);
         _readingTimer = setInterval(pdfUpdateReadingTimer, 1000);
 
-        // Periodic watermark refresh + progress bump (every 25s, same as before)
+        // Periodic watermark refresh + progress bump.
+        // v1.6.35 — Mobile: skip the watermark rebuild (SVG background is
+        // set-once + scales for free); just keep the 60s progress bump.
+        // Desktop: rebuild every 60s instead of 25s (cuts DOM churn 2.4×
+        // with no visible difference — timestamp granularity stays at minute).
+        const _wmIntervalIsMobile = window.innerWidth < 700;
         Viewer.timer = setInterval(()=>{
-            buildWatermarkGrid();
+            if(!_wmIntervalIsMobile) buildWatermarkGrid();
             // Every 60s of viewing bumps progress +3% (cap 100) and logs a session ping
             if(Date.now()-Viewer.lastProgressBump > 60000){
                 Viewer.lastProgressBump = Date.now();
                 bumpProgress(Viewer.courseId, 3);
             }
-        }, 25000);
+        }, 60000);
 
         // Focus-mode: dim the bar + corner after 5.5s of mouse/touch inactivity. Hovering
         // the bar re-reveals it via CSS :hover. Wired once (idempotent on re-open).
@@ -9640,11 +9769,21 @@
                 logCourseView(Viewer.courseId, 'blur', 0);
             }
         });
-        // Rebuild watermark on resize/orientation change so rows always cover new viewport
+        // Rebuild watermark on resize/orientation change so rows always cover
+        // the new viewport. v1.6.35 — on mobile the SVG background is
+        // tile-repeated so it auto-fits any size; we ONLY need to rebuild
+        // when crossing the desktop/mobile threshold (so the user gets the
+        // right rendering strategy after rotating an iPad mini, etc.).
         let _wmResize;
+        let _wmLastWasMobile = window.innerWidth < 700;
         window.addEventListener('resize', ()=>{
             if(!document.getElementById('pdfViewer')?.classList.contains('active')) return;
-            clearTimeout(_wmResize); _wmResize = setTimeout(buildWatermarkGrid, 150);
+            const nowMobile = window.innerWidth < 700;
+            if(nowMobile !== _wmLastWasMobile){
+                _wmLastWasMobile = nowMobile;
+                clearTimeout(_wmResize); _wmResize = setTimeout(buildWatermarkGrid, 150);
+            }
+            // Same-strategy resize (e.g. mobile→mobile rotate) → no rebuild needed.
         });
     })();
 

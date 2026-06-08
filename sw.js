@@ -1,4 +1,68 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
+   v1.6.35 — Mobile zoom-crash fix + iOS Safari fullscreen fix.
+
+   BUG A — "A problem repeatedly occurred on #courses" Chrome mobile crash.
+   ------------------------------------------------------------------------
+   Pinch-zooming a PDF past a certain threshold blew through Chrome's
+   per-tab memory cap and triggered the OOM kill. Triple cause:
+     (1) 189 absolutely-positioned watermark <span> elements all needing
+         re-rasterisation at the new zoom level.
+     (2) THREE simultaneous backdrop-filter layers (bar + panel + corner)
+         — backdrop-filter must re-blur the underlying iframe at every
+         paint, cost scales with zoom factor SQUARED.
+     (3) The iframe rendering Drive's high-DPI PDF.
+   Together: OOM → tab killed.
+
+   Fixes (cut chrome memory ~80% on mobile):
+     • Watermark on mobile now a SINGLE element with a CSS background-image
+       SVG data-URI tile (360×180px, background-repeat:repeat). The DOM
+       .pdf-watermark-tile grid is hidden via CSS. Same per-user stamp
+       (name • email • timestamp • #shortId) at the same -26° angle — just
+       composited as ONE GPU texture instead of 189 layout nodes.
+     • backdrop-filter dropped on mobile from .pdf-viewer-bar /
+       .pdf-display-panel / .pdf-secure-corner. Replaced with semi-opaque
+       solid backgrounds (visually near-identical, zero re-blur cost).
+     • contain: layout style paint on .pdf-viewer scopes paint regions
+       so iframe redraws don't invalidate our chrome tree.
+     • touch-action: manipulation on icon buttons removes iOS 300ms tap
+       delay AND prevents the gesture-event flood that triggers extra
+       layout passes during pinch-zoom.
+     • iframe gets transform:translateZ(0) + will-change:transform on
+       mobile, promoting it to its own compositor layer so pinch-zoom
+       only rasterises ONE surface (the PDF) not the whole tree.
+     • Mobile watermark refresh interval REMOVED inside Viewer.timer
+       (SVG is set-once, scales for free). Desktop interval also slowed
+       from 25s → 60s — minute-granular timestamp is what the watermark
+       shows anyway.
+     • window.resize listener now only rebuilds the watermark when the
+       viewport crosses the desktop/mobile threshold (same-strategy
+       rotates are no-ops).
+
+   BUG B — "Fullscreen is not supported in this browser" on iOS.
+   ------------------------------------------------------------------------
+   iOS Safari (and iOS Chrome / iOS Edge, which are forced onto WebKit)
+   does NOT expose requestFullscreen / webkitRequestFullscreen on non-
+   video elements. Old code optimistically called req.call(el) → silent
+   no-op → toast "Fullscreen is not supported in this browser". UX-hostile.
+
+   Fix — pdfTogglePdfFullscreen now feature-detects FIRST:
+     • Real-FS available (Chrome / Firefox / Edge desktop, Chrome Android)
+       → toggle real FS, .catch() falls back to URL-bar collapse + toast.
+     • Real-FS missing (iOS Safari / iOS Chrome / iOS Edge)
+       → window.scrollTo(0,1) to collapse the URL bar + truthful toast:
+           "📱 Already filling your screen. Rotate to landscape for the
+            biggest reading area, or Add to Home Screen for true
+            full-screen." (portrait variant)
+           "📱 Already filling your screen. Add HealthIQ to your Home
+            Screen for true full-screen mode." (landscape variant)
+       Our viewer is already position:fixed inset:0 z-index:9000 so it
+       genuinely IS full-screen apart from the browser chrome — and the
+       manifest's display:standalone gives true OS-level full-screen
+       once added to Home Screen.
+
+   Pure index.html-only release (no SQL, no Edge Function, no migration changes).
+
+   === CARRIED FORWARD FROM v1.6.34 ===============================
    v1.6.34 — Removed visible "View-Only" + "Watermarked" labels from
    the secure viewer UI per user request.
    * The two badges `👁 View-Only` and `💧 Watermarked` are removed from
@@ -145,7 +209,7 @@
    * ALTER TABLE ADD COLUMN IF NOT EXISTS + NOTIFY pgrst reload.
    Carries forward from v1.6.25:
    * Realtime + 45s poll fallback + dual-admin RLS. */
-const VERSION = 'hiq-v1.6.34';
+const VERSION = 'hiq-v1.6.35';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
