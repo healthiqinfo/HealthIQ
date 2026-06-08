@@ -5197,7 +5197,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.18';
+    const APP_VERSION = '1.6.19';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -5614,12 +5614,27 @@
     }
 
     // ===== FORGOT PASSWORD =====
+    // v1.6.19 — Shared helper that returns the canonical URL Supabase should
+    // redirect back to after an auth email link is clicked. Strips trailing
+    // 'index.html' so the URL always matches the Dashboard's Redirect URLs
+    // allow-list cleanly, regardless of how the user navigated to the page
+    // (e.g. /HealthIQ vs /HealthIQ/ vs /HealthIQ/index.html on GitHub Pages
+    // all collapse to the same canonical form).
+    function getAuthRedirectUrl() {
+        const origin = window.location.origin;
+        let path = window.location.pathname || '/';
+        // Drop a trailing 'index.html' (case-insensitive) so the redirect URL
+        // is consistent and friendly to allow-list patterns.
+        path = path.replace(/\/index\.html$/i, '/');
+        return origin + path;
+    }
+
     async function handleForgotPassword() {
         const email=document.getElementById('loginEmail').value.trim();
         if(!email){showToast('Enter your email first, then click Forgot Password','warning');return;}
         if(!isSupabaseConfigured()){showToast('Service unavailable','error');return;}
         try{
-            const{error}=await db.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
+            const{error}=await db.auth.resetPasswordForEmail(email,{redirectTo:getAuthRedirectUrl()});
             if(error)throw error;
             showToast('Password reset link sent to '+email+'! Check your inbox.','success');
         }catch(e){showToast(e.message||'Failed to send reset email','error');}
@@ -5927,7 +5942,9 @@
             // MUST be added to Dashboard → Authentication → URL Configuration
             // → Redirect URLs (allow-list), otherwise Supabase falls back to
             // the Site URL setting which may still be localhost.
-            const redirectTo = window.location.origin + window.location.pathname;
+            // v1.6.19 — Delegate URL construction to getAuthRedirectUrl() so
+            // the redirect target is normalised (strips trailing index.html).
+            const redirectTo = getAuthRedirectUrl();
             const {data,error}=await db.auth.signUp({
                 email:em,
                 password:pw,
@@ -6856,6 +6873,7 @@
                 <button class="btn btn-primary btn-sm" onclick="runSettingsDiagnostic()">🔄 Re-run Diagnostic</button>
                 <button class="btn btn-ghost btn-sm" onclick="forceRefreshSettings()">⬇️ Force Refresh from DB</button>
                 <button class="btn btn-ghost btn-sm" onclick="testWhatsappLink()">📱 Test WhatsApp Link</button>
+                <button class="btn btn-ghost btn-sm" onclick="showAuthSetupHelper()">🔐 Auth Setup Helper</button>
             </div>
         </div>
 
@@ -7041,6 +7059,110 @@
             +   '</div>'
             +   '<div style="margin-top:0.4rem;font-size:0.72rem;color:var(--gray-500);">Highlighted row = the source the FAB picked. Resolution stops at the first row whose digits-only value is 10-15 chars.</div>'
             + '</details>';
+    }
+
+    // v1.6.19 — Auth Setup Helper.
+    // Computes the canonical URLs Supabase should be configured with based on
+    // the current window.location (the EXACT origin + path your live site is
+    // served from). Eliminates copy-paste typos when filling out the
+    // Supabase Dashboard → Authentication → URL Configuration form.
+    //
+    // Shows in an inline panel below the diagnostic with:
+    //   - Detected origin + pathname
+    //   - The exact Site URL value to paste
+    //   - The full Redirect URLs allow-list (4 variants + wildcard)
+    //   - Copy-to-clipboard buttons for each block
+    //   - Status indicator: does the email link your users click actually
+    //     land on THIS origin? If not, the dashboard is misconfigured.
+    function showAuthSetupHelper() {
+        const body = document.getElementById('settingsDiagnosticBody');
+        if (!body) return;
+        // Remove any previous helper panel + WhatsApp test result
+        const old = document.getElementById('authSetupHelperResult');
+        if (old) old.remove();
+
+        const esc = Utils.escapeHtml;
+        const canonical = getAuthRedirectUrl();         // origin + normalised path
+        const origin = window.location.origin;
+        const path = window.location.pathname;
+        const baseNoTrail = canonical.replace(/\/$/, ''); // strip ONE trailing slash for variants
+        const baseWithTrail = baseNoTrail + '/';
+
+        // Build the recommended Redirect URLs block (one per line)
+        const redirectUrls = [
+            baseNoTrail,
+            baseWithTrail,
+            baseNoTrail + '/index.html',
+            baseNoTrail + '/**'
+        ].join('\n');
+
+        // Helper to render a labelled copyable text block with a Copy button.
+        // Uses a unique id per block so the buttons' onclick can grab the right
+        // textarea contents without DOM-walking gymnastics.
+        const makeCopyBlock = (label, value, blockId) => ''
+            + '<div style="margin-bottom:0.9rem;">'
+            +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">'
+            +     '<label style="font-size:0.78rem;font-weight:600;color:var(--gray-700);">' + esc(label) + '</label>'
+            +     '<button type="button" class="btn btn-ghost btn-sm" style="padding:0.25rem 0.6rem;font-size:0.72rem;" '
+            +       'onclick="(function(){var el=document.getElementById(\'' + blockId + '\');if(!el)return;el.select();try{navigator.clipboard.writeText(el.value).then(function(){showToast(\'Copied to clipboard\',\'success\');});}catch(_){document.execCommand(\'copy\');showToast(\'Copied\',\'success\');}})()">📋 Copy</button>'
+            +   '</div>'
+            +   '<textarea id="' + blockId + '" readonly rows="' + (value.split('\n').length) + '" '
+            +     'style="width:100%;padding:0.55rem 0.7rem;border:1px solid var(--gray-300,#d1d5db);border-radius:6px;font-family:monospace;font-size:0.82rem;background:var(--gray-50,#f9fafb);color:var(--gray-800);resize:none;">'
+            +     esc(value)
+            +   '</textarea>'
+            + '</div>';
+
+        const panel = document.createElement('div');
+        panel.id = 'authSetupHelperResult';
+        panel.style.cssText = 'margin-top:1rem;padding:1.1rem;border-radius:8px;background:var(--gray-50,#f9fafb);border-left:3px solid #6366f1;';
+        panel.innerHTML = ''
+            + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;margin-bottom:0.75rem;">'
+            +   '<div>'
+            +     '<h4 style="margin:0 0 0.25rem;font-size:1rem;font-weight:700;color:var(--gray-800);">🔐 Supabase Auth URL Setup</h4>'
+            +     '<p style="margin:0;font-size:0.82rem;color:var(--gray-600);">Copy these exact values into <strong>Supabase Dashboard → Authentication → URL Configuration</strong>.</p>'
+            +   '</div>'
+            +   '<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById(\'authSetupHelperResult\').remove()" aria-label="Close" style="padding:0.2rem 0.55rem;">&times;</button>'
+            + '</div>'
+
+            // Origin/path info box
+            + '<div style="padding:0.7rem 0.9rem;background:#eef2ff;border-radius:6px;font-size:0.8rem;color:#3730a3;margin-bottom:1rem;">'
+            +   '<div style="margin-bottom:0.3rem;"><strong>Detected origin:</strong> <code style="background:#fff;padding:0.1rem 0.4rem;border-radius:3px;">' + esc(origin) + '</code></div>'
+            +   '<div style="margin-bottom:0.3rem;"><strong>Detected path:</strong> <code style="background:#fff;padding:0.1rem 0.4rem;border-radius:3px;">' + esc(path) + '</code></div>'
+            +   '<div><strong>Canonical URL (after normalisation):</strong> <code style="background:#fff;padding:0.1rem 0.4rem;border-radius:3px;">' + esc(canonical) + '</code></div>'
+            + '</div>'
+
+            // Site URL block (single value)
+            + makeCopyBlock('Site URL (paste this single value)', baseNoTrail, 'authSiteUrlBlock')
+
+            // Redirect URLs block (multi-line)
+            + makeCopyBlock('Redirect URLs (paste all 4 lines)', redirectUrls, 'authRedirectUrlsBlock')
+
+            // Step-by-step
+            + '<details style="margin-top:0.5rem;font-size:0.82rem;color:var(--gray-700);">'
+            +   '<summary style="cursor:pointer;font-weight:600;">📋 Step-by-step in Supabase Dashboard</summary>'
+            +   '<ol style="margin:0.5rem 0 0;padding-left:1.3rem;line-height:1.65;">'
+            +     '<li>Open <a href="https://supabase.com/dashboard" target="_blank" rel="noopener" style="color:var(--primary);">supabase.com/dashboard</a> → your project</li>'
+            +     '<li>Go to <strong>Authentication → URL Configuration</strong></li>'
+            +     '<li>Paste the <strong>Site URL</strong> value above into the "Site URL" field</li>'
+            +     '<li>Paste all 4 <strong>Redirect URLs</strong> lines into the "Redirect URLs" textarea (one per line)</li>'
+            +     '<li>Click <strong>Save</strong></li>'
+            +     '<li>Test by registering a new account — the email link should now point at <code>' + esc(baseNoTrail) + '</code></li>'
+            +   '</ol>'
+            + '</details>'
+
+            // The "why 4 URLs" explainer
+            + '<details style="margin-top:0.5rem;font-size:0.78rem;color:var(--gray-600);">'
+            +   '<summary style="cursor:pointer;">Why 4 redirect URLs?</summary>'
+            +   '<ul style="margin:0.4rem 0 0;padding-left:1.3rem;line-height:1.55;">'
+            +     '<li><code>' + esc(baseNoTrail) + '</code> — when user visits site without a trailing slash</li>'
+            +     '<li><code>' + esc(baseWithTrail) + '</code> — when user visits with a trailing slash</li>'
+            +     '<li><code>' + esc(baseNoTrail) + '/index.html</code> — explicit index.html (some clients)</li>'
+            +     '<li><code>' + esc(baseNoTrail) + '/**</code> — wildcard catch-all for any sub-path (future-proof)</li>'
+            +   '</ul>'
+            + '</details>';
+
+        body.appendChild(panel);
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     // Renders the diagnostic report as a rich HTML panel.
@@ -7484,7 +7606,7 @@
             const { error } = await db.auth.resend({
                 type: 'signup',
                 email: clean,
-                options: { emailRedirectTo: window.location.origin + window.location.pathname }
+                options: { emailRedirectTo: getAuthRedirectUrl() }
             });
             if (error) throw error;
             showToast('New confirmation email sent to ' + clean + ' — check your inbox (and spam folder).', 'success', { duration: 6000 });

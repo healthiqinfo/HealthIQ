@@ -13,26 +13,35 @@ Configuration**. Here's the fix:
 
 ### 🛠️ The dashboard fix (do this once)
 
+> **HealthIQ is hosted on GitHub Pages at:**
+> `https://healthiqinfo.github.io/HealthIQ`
+> The exact values you need to paste are below.
+
 1. Open the [Supabase Dashboard](https://supabase.com/dashboard) → your project.
 2. Go to **Authentication → URL Configuration**.
-3. **Site URL** — set this to your **live production URL**, e.g.:
+3. **Site URL** — paste this **exactly** (note: no trailing slash):
    ```
-   https://healthiq.in
+   https://healthiqinfo.github.io/HealthIQ
    ```
-   (Or wherever the site is actually hosted. **NOT** `http://localhost:3000`.)
-4. **Redirect URLs** — add every URL the app might redirect to, one per line:
+4. **Redirect URLs** — paste these (one per line). All four are needed to
+   cover the three ways a user can land on the site (with `/`, without `/`,
+   or with `/index.html`) plus a wildcard catch-all for any future sub-paths:
    ```
-   https://healthiq.in
-   https://healthiq.in/
-   https://www.healthiq.in
-   https://www.healthiq.in/
+   https://healthiqinfo.github.io/HealthIQ
+   https://healthiqinfo.github.io/HealthIQ/
+   https://healthiqinfo.github.io/HealthIQ/index.html
+   https://healthiqinfo.github.io/HealthIQ/**
    ```
-   Add localhost too if you're still developing locally:
+   *(Add localhost too if you're still developing locally — for production-only
+   sites, skip these:)*
    ```
    http://localhost:3000
    http://localhost:5173
    ```
 5. Click **Save**.
+6. Inside the app, open **Admin → System → Settings → 🩺 Database Diagnostics**
+   and click the **🔐 Auth Setup Helper** button — it displays the same URLs
+   computed from `window.location` so you can verify they match.
 
 ### Why this happens
 
