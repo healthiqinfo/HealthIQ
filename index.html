@@ -43,6 +43,48 @@
       "description":"Premium BHMS & MD Homoeopathy notes by a Gold Medalist."
     }
     </script>
+    <!-- Global Error Handler: Redirect to main page if critical resources fail -->
+    <script>
+    (function initErrorHandler(){
+        // Track if page loaded successfully
+        let pageLoaded = false;
+        let criticalErrors = 0;
+        const MAX_CRITICAL_ERRORS = 3;
+        
+        // Detect if page failed to render (e.g., GitHub's "file too large" scenario)
+        window.addEventListener('error', (event) => {
+            if (event.target !== window) return; // Only global errors
+            criticalErrors++;
+            console.error('[Error Handler] Global error:', event.message);
+            if (criticalErrors >= MAX_CRITICAL_ERRORS && !pageLoaded) {
+                console.warn('[Error Handler] Too many errors before page load — redirecting to main');
+                window.location.href = 'https://healthiqinfo.github.io/';
+            }
+        }, true);
+        
+        // Detect unhandled promise rejections
+        window.addEventListener('unhandledrejection', (event) => {
+            console.warn('[Error Handler] Unhandled rejection:', event.reason);
+        });
+        
+        // Mark page as successfully loaded once DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                pageLoaded = true;
+            });
+        } else {
+            pageLoaded = true;
+        }
+        
+        // Fallback: if page doesn't fully load in 15 seconds, redirect to main
+        setTimeout(() => {
+            if (!pageLoaded) {
+                console.warn('[Error Handler] Page did not load within 15s — redirecting to main');
+                window.location.href = 'https://healthiqinfo.github.io/';
+            }
+        }, 15000);
+    })();
+    </script>
     <style>
                 /*
                     CSS structure (single-file)
