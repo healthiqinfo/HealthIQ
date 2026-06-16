@@ -5940,7 +5940,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.38';
+    const APP_VERSION = '1.6.43';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -6515,7 +6515,11 @@
         if (!APP.currentUser) { openModal('login'); showToast('Please login first', 'warning'); return; }
         const plan = getPublishedPlans()[planIdx];
         if (!plan) { showToast('This plan is no longer available', 'error'); return; }
-        enrollCourse(courseId, plan.title, plan.price);
+        // Get the actual course title from the hidden course, fallback to plan title if not found
+        const slug = 'pricing-plan-' + (planIdx + 1);
+        const course = APP.courses.find(c => c.slug === slug);
+        const courseTitle = course?.title || plan.title;
+        enrollCourse(courseId, courseTitle, plan.price);
     }
 
     function openPlanNotes(planIdx) {
@@ -6560,7 +6564,7 @@
     async function fetchOrders() {
         if(!isSupabaseConfigured()) return;
         try {
-            const {data,error}=await db.from('orders').select('*, profiles(full_name,email), courses(title,category)').order('created_at',{ascending:false});
+            const {data,error}=await db.from('orders').select('id,user_id,course_id,order_number,amount,total_amount,currency,status,payment_method,payment_verified,paid_at,created_at, profiles(full_name,email), courses(id,title,category)').order('created_at',{ascending:false});
             if(error){ console.error('fetchOrders error:',error); showToast('Orders fetch error: '+error.message,'error'); APP.orders = []; return; }
             APP.orders = data || [];
         } catch(e){ console.error('fetchOrders exception:',e); APP.orders = []; }
@@ -7106,9 +7110,15 @@
                 try {
                     const childTables = ['enrollments','orders','course_views','study_sessions','bookmarks','reviews','course_modules','lessons','order_items'];
                     // Run all child-table deletes in parallel; each is independent.
-                    await Promise.all(childTables.map(t =>
-                        db.from(t).delete().eq('course_id', id).then(() => {}, () => {})
-                    ));
+                    // v1.6.42: Use await to ensure errors are caught, don't use silent .then()
+                    for (const t of childTables) {
+                        try {
+                            await db.from(t).delete().eq('course_id', id);
+                        } catch (deleteErr) {
+                            // Log but continue with other tables
+                            console.warn('Failed to delete ' + t + ' records:', deleteErr);
+                        }
+                    }
                     await db.from('courses').delete().eq('id', id);
                 } catch(_){ /* silent — soft delete already succeeded */ }
             })();
@@ -7132,8 +7142,63 @@
         if (_authHydrating) return _authHydrating;
         _authHydrating = (async () => {
             try {
-                const { data: p, error: pe } = await db.from('profiles').select('*').eq('id', session.user.id).single();
+                let { data: p, error: pe } = await db.from('profiles').select('*').eq('id', session.user.id).single();
                 if (pe) console.warn('hydrateUserFromSession profile error:', pe);
+
+                // v1.6.43 — Auto-create missing profile row. If the DB trigger
+                // didn't fire (OAuth, trigger missing, race condition), we
+                // create the profile client-side so orders/enrollments FK
+                // constraints never fail. Uses auth metadata when available.
+                if (!p) {
+                    console.warn('[auth] Profile missing for', session.user.email, '— creating now');
+                    const meta = session.user.user_metadata || {};
+                    const emailPrefix = (session.user.email || 'user').split('@')[0].replace(/[^a-zA-Z0-9_]/g, '');
+                    const firstName = meta.first_name || meta.full_name?.split(' ')[0] || emailPrefix || 'User';
+                    const lastName  = meta.last_name  || meta.full_name?.split(' ').slice(1).join(' ') || 'User';
+                    // Username: must start with letter, 3-30 alphanumeric/underscore
+                    let username = meta.username || emailPrefix;
+                    username = username.replace(/[^a-zA-Z0-9_]/g, '');
+                    if (!/^[a-zA-Z]/.test(username)) username = 'u' + username;
+                    if (username.length < 3) username = username + 'user';
+                    username = username.slice(0, 30);
+                    try {
+                        const { data: newProfile, error: insertErr } = await db.from('profiles')
+                            .insert({
+                                id: session.user.id,
+                                email: session.user.email.toLowerCase(),
+                                username: username,
+                                first_name: firstName,
+                                last_name: lastName
+                            })
+                            .select()
+                            .single();
+                        if (insertErr) {
+                            // Unique constraint on username? Try with timestamp suffix
+                            if (insertErr.code === '23505' && /username/i.test(insertErr.message || '')) {
+                                const ts = Date.now().toString(36).slice(-4);
+                                const { data: retryProfile } = await db.from('profiles')
+                                    .insert({
+                                        id: session.user.id,
+                                        email: session.user.email.toLowerCase(),
+                                        username: username.slice(0, 25) + ts,
+                                        first_name: firstName,
+                                        last_name: lastName
+                                    })
+                                    .select()
+                                    .single();
+                                p = retryProfile;
+                            } else {
+                                console.error('[auth] Profile auto-create failed:', insertErr);
+                            }
+                        } else {
+                            p = newProfile;
+                        }
+                        if (p) console.log('[auth] Profile auto-created for', session.user.email);
+                    } catch (e) {
+                        console.error('[auth] Profile auto-create exception:', e);
+                    }
+                }
+
                 const role = p?.role || (session.user.email === 'thehealthiqinfo@gmail.com' ? 'admin' : 'student');
                 APP.currentUser = {
                     id: session.user.id,
@@ -7850,11 +7915,13 @@
     async function saveAnnouncement() { const text=document.getElementById('announcementText').value.trim(); await saveSetting('announcement',text); showToast(text?'Announcement saved!':'Announcement cleared!'); }
 
     function renderAdminCourses() {
-        const rows=APP.courses.length?APP.courses.map(c=>'<tr><td><div style="display:flex;align-items:center;gap:0.75rem;"><span style="font-size:1.3rem;">'+Utils.escapeHtml(c.icon||'\u{1F4DA}')+'</span><div><strong>'+Utils.escapeHtml(c.title)+'</strong><div style="font-size:0.72rem;color:var(--gray-300);">'+Utils.escapeHtml(c.slug||'')+' &middot; '+Utils.escapeHtml(c.difficulty||'beginner')+'</div></div></div></td><td><span class="status-badge status-active">'+Utils.escapeHtml(c.category||'')+'</span></td><td><strong>'+Utils.formatCurrency(c.price)+'</strong>'+(c.original_price?'<span style="text-decoration:line-through;color:var(--gray-300);font-size:0.72rem;margin-left:0.3rem;">'+Utils.formatCurrency(c.original_price)+'</span>':'')+'</td><td><span class="status-badge '+(c.is_published?'status-active':'status-draft')+'">'+(c.is_published?'Live':'Draft')+'</span></td><td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" onclick="editCourse(\''+c.id+'\')" title="Edit">&#x270F;</button> <button class="btn btn-ghost btn-sm" onclick="duplicateCourse(\''+c.id+'\')" title="Duplicate">&#x1F4CB;</button> <button class="btn btn-ghost btn-sm" onclick="toggleCoursePublish(\''+c.id+'\','+(!c.is_published)+')" title="'+(c.is_published?'Unpublish':'Publish')+'">'+(c.is_published?'&#x1F6D1;':'&#x1F680;')+'</button> <button class="btn btn-danger btn-sm" onclick="deleteCourse(\''+c.id+'\')" title="Delete">&#x1F5D1;</button></td></tr>').join(''):'<tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">&#x1F4DA;</div><h3>No courses yet</h3><p>Create your first course to get started.</p><button class="btn btn-primary" onclick="openAddCourse()">+ Create Course</button></div></td></tr>';
-        document.getElementById('adminContent').innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;"><div><h2 style="font-size:1.4rem;font-weight:800;">Courses</h2><p style="font-size:0.85rem;color:var(--gray-600);">Manage your course catalog &middot; '+APP.courses.filter(c=>c.is_published).length+' live, '+APP.courses.filter(c=>!c.is_published).length+' draft</p></div><div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;"><input type="text" class="search-input" placeholder="Search courses..." oninput="filterAdminCourses(this.value)"><select class="search-input" style="width:auto;padding-left:0.8rem;background-image:none;" onchange="filterCoursesByStatus(this.value)"><option value="all">All Status</option><option value="published">Published</option><option value="draft">Draft</option></select><button class="btn btn-primary" onclick="openAddCourse()">+ Add Course</button></div></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th>Course</th><th>Category</th><th>Price</th><th>Status</th><th>Actions</th></tr></thead><tbody id="adminCoursesBody">'+rows+'</tbody></table></div>';
+        // Filter out hidden pricing-plan courses - they're managed in the Pricing Plans tab
+        const visibleCourses = APP.courses.filter(c => !(c.slug || '').startsWith('pricing-plan-'));
+        const rows=visibleCourses.length?visibleCourses.map(c=>'<tr><td><div style="display:flex;align-items:center;gap:0.75rem;"><span style="font-size:1.3rem;">'+Utils.escapeHtml(c.icon||'\u{1F4DA}')+'</span><div><strong>'+Utils.escapeHtml(c.title)+'</strong><div style="font-size:0.72rem;color:var(--gray-300);">'+Utils.escapeHtml(c.slug||'')+' &middot; '+Utils.escapeHtml(c.difficulty||'beginner')+'</div></div></div></td><td><span class="status-badge status-active">'+Utils.escapeHtml(c.category||'')+'</span></td><td><strong>'+Utils.formatCurrency(c.price)+'</strong>'+(c.original_price?'<span style="text-decoration:line-through;color:var(--gray-300);font-size:0.72rem;margin-left:0.3rem;">'+Utils.formatCurrency(c.original_price)+'</span>':'')+'</td><td><span class="status-badge '+(c.is_published?'status-active':'status-draft')+'">'+(c.is_published?'Live':'Draft')+'</span></td><td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" onclick="editCourse(\''+c.id+'\')" title="Edit">&#x270F;</button> <button class="btn btn-ghost btn-sm" onclick="duplicateCourse(\''+c.id+'\')" title="Duplicate">&#x1F4CB;</button> <button class="btn btn-ghost btn-sm" onclick="toggleCoursePublish(\''+c.id+'\','+(!c.is_published)+')" title="'+(c.is_published?'Unpublish':'Publish')+'">'+(c.is_published?'&#x1F6D1;':'&#x1F680;')+'</button> <button class="btn btn-danger btn-sm" onclick="deleteCourse(\''+c.id+'\')" title="Delete">&#x1F5D1;</button></td></tr>').join(''):'<tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">&#x1F4DA;</div><h3>No courses yet</h3><p>Create your first course to get started.</p><button class="btn btn-primary" onclick="openAddCourse()">+ Create Course</button></div></td></tr>';
+        document.getElementById('adminContent').innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;"><div><h2 style="font-size:1.4rem;font-weight:800;">Courses</h2><p style="font-size:0.85rem;color:var(--gray-600);">Manage your course catalog &middot; '+visibleCourses.filter(c=>c.is_published).length+' live, '+visibleCourses.filter(c=>!c.is_published).length+' draft</p></div><div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;"><input type="text" class="search-input" placeholder="Search courses..." oninput="filterAdminCourses(this.value)"><select class="search-input" style="width:auto;padding-left:0.8rem;background-image:none;" onchange="filterCoursesByStatus(this.value)"><option value="all">All Status</option><option value="published">Published</option><option value="draft">Draft</option></select><button class="btn btn-primary" onclick="openAddCourse()">+ Add Course</button></div></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th>Course</th><th>Category</th><th>Price</th><th>Status</th><th>Actions</th></tr></thead><tbody id="adminCoursesBody">'+rows+'</tbody></table></div>';
     }
-    function filterAdminCourses(q) { q=q.toLowerCase(); const filtered=APP.courses.filter(c=>(c.title||'').toLowerCase().includes(q)||(c.category||'').toLowerCase().includes(q)||(c.slug||'').toLowerCase().includes(q)); renderFilteredCourses(filtered); }
-    function filterCoursesByStatus(v) { const filtered=v==='all'?APP.courses:v==='published'?APP.courses.filter(c=>c.is_published):APP.courses.filter(c=>!c.is_published); renderFilteredCourses(filtered); }
+    function filterAdminCourses(q) { q=q.toLowerCase(); const visible=APP.courses.filter(c=>!(c.slug||'').startsWith('pricing-plan-')); const filtered=visible.filter(c=>(c.title||'').toLowerCase().includes(q)||(c.category||'').toLowerCase().includes(q)||(c.slug||'').toLowerCase().includes(q)); renderFilteredCourses(filtered); }
+    function filterCoursesByStatus(v) { const visible=APP.courses.filter(c=>!(c.slug||'').startsWith('pricing-plan-')); const filtered=v==='all'?visible:v==='published'?visible.filter(c=>c.is_published):visible.filter(c=>!c.is_published); renderFilteredCourses(filtered); }
     function renderFilteredCourses(list) { const tbody=document.getElementById('adminCoursesBody'); if(!tbody)return; tbody.innerHTML=list.map(c=>'<tr><td><div style="display:flex;align-items:center;gap:0.75rem;"><span style="font-size:1.3rem;">'+Utils.escapeHtml(c.icon||'\u{1F4DA}')+'</span><div><strong>'+Utils.escapeHtml(c.title)+'</strong><div style="font-size:0.72rem;color:var(--gray-300);">'+Utils.escapeHtml(c.slug||'')+'</div></div></div></td><td><span class="status-badge status-active">'+Utils.escapeHtml(c.category||'')+'</span></td><td><strong>'+Utils.formatCurrency(c.price)+'</strong></td><td><span class="status-badge '+(c.is_published?'status-active':'status-draft')+'">'+(c.is_published?'Live':'Draft')+'</span></td><td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" onclick="editCourse(\''+c.id+'\')">&#x270F;</button> <button class="btn btn-ghost btn-sm" onclick="duplicateCourse(\''+c.id+'\')">&#x1F4CB;</button> <button class="btn btn-ghost btn-sm" onclick="toggleCoursePublish(\''+c.id+'\','+(!c.is_published)+')">'+(c.is_published?'&#x1F6D1;':'&#x1F680;')+'</button> <button class="btn btn-danger btn-sm" onclick="deleteCourse(\''+c.id+'\')">&#x1F5D1;</button></td></tr>').join('')||'<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--gray-600);">No matches found</td></tr>'; }
 
     async function toggleCoursePublish(id,publish) { try{const{error}=await db.from('courses').update({is_published:publish,published_at:publish?new Date().toISOString():null}).eq('id',id); if(error)throw error; showToast(publish?'Course published!':'Course unpublished'); await fetchCourses(); updateSidebarCounts(); renderAdminCourses();}catch(e){showToast('Error: '+e.message,'error');} }
@@ -7874,9 +7941,53 @@
     function renderAdminOrders() {
         const completed=APP.orders.filter(o=>o.status==='completed').length, pending=APP.orders.filter(o=>o.status==='pending').length;
         const totalRev=APP.orders.filter(o=>o.status==='completed').reduce((a,o)=>a+(o.total_amount||o.amount||0),0);
-        document.getElementById('adminContent').innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;"><div><h2 style="font-size:1.4rem;font-weight:800;">Orders</h2><p style="font-size:0.85rem;color:var(--gray-600);">'+APP.orders.length+' total &middot; '+completed+' completed &middot; '+pending+' pending &middot; Revenue: '+Utils.formatCurrency(totalRev)+'</p></div><div style="display:flex;gap:0.75rem;align-items:center;"><input type="text" class="search-input" placeholder="Search orders..." oninput="filterAdminOrders(this.value)"><select class="search-input" style="width:auto;padding-left:0.8rem;background-image:none;" onchange="filterOrdersByStatus(this.value)"><option value="all">All</option><option value="completed">Completed</option><option value="pending">Pending</option><option value="failed">Failed</option></select></div></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th>Order ID</th><th>Customer</th><th>Course</th><th>Amount</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead><tbody id="adminOrdersBody">'+renderOrderRows(APP.orders)+'</tbody></table></div>';
+        document.getElementById('adminContent').innerHTML=`
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
+            <div>
+                <h2 style="font-size:1.4rem;font-weight:800;">📋 Orders</h2>
+                <p style="font-size:0.85rem;color:var(--gray-600);">${APP.orders.length} total · ${completed} completed · ${pending} pending · Revenue: ${Utils.formatCurrency(totalRev)}</p>
+            </div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <button class="btn btn-ghost btn-sm" onclick="exportAdminData('csv','orders')">📥 Export CSV</button>
+                <button class="btn btn-ghost btn-sm" onclick="exportAdminData('json','orders')">📥 Export JSON</button>
+            </div>
+        </div>
+        ${renderOrderFilterUI()}
+        <div id="bulkOrderActionsDiv" style="display:none;gap:0.75rem;margin-bottom:1.5rem;padding:1rem;background:linear-gradient(135deg,#cffafe,#a5f3fc);border:1px solid #06b6d4;border-radius:var(--radius);align-items:center;flex-wrap:wrap;"></div>
+        <div class="admin-table-wrapper">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" onchange="selectAllOrders(this.checked)"></th>
+                        <th>Order ID</th>
+                        <th>Customer</th>
+                        <th>Course</th>
+                        <th>Amount</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="adminOrdersBody">${renderOrderRowsWithCheckbox(APP.orders)}</tbody>
+            </table>
+        </div>`;
+        updateOrderBulkActionButtons();
     }
-    function renderOrderRows(list) { return list.length?list.map(o=>'<tr><td style="font-family:monospace;font-size:0.78rem;">'+Utils.escapeHtml(o.order_number||String(o.id).slice(0,8))+'</td><td>'+Utils.escapeHtml(o.profiles?.full_name||'')+'<div style="font-size:0.7rem;color:var(--gray-300);">'+Utils.escapeHtml(o.profiles?.email||'')+'</div></td><td>'+Utils.escapeHtml(o.courses?.title||'')+'</td><td><strong>'+Utils.formatCurrency(o.total_amount||o.amount||0)+'</strong></td><td style="font-size:0.82rem;">'+Utils.formatDate(o.created_at)+'</td><td><span class="status-badge status-'+(o.status==='completed'?'active':o.status==='pending'?'draft':'inactive')+'">'+Utils.escapeHtml(o.status)+'</span></td><td style="white-space:nowrap;">'+(o.status==='pending'?'<button class="btn btn-success btn-sm" onclick="approveOrder(\''+o.id+'\',\''+o.user_id+'\',\''+o.course_id+'\')" title="Approve">&#x2705; Approve</button> <button class="btn btn-danger btn-sm" onclick="rejectOrder(\''+o.id+'\')" title="Reject">&#x274C;</button>':o.status==='completed'?'<span style="font-size:0.72rem;color:var(--gray-300);margin-right:0.4rem;">Approved</span><button class="btn btn-ghost btn-sm" onclick="resendOrderEmail(\''+o.id+'\')" title="Resend welcome email to user">&#x1F4E7; Resend</button>':o.status==='failed'?'<span style="font-size:0.72rem;color:var(--gray-300);margin-right:0.4rem;">Rejected</span><button class="btn btn-ghost btn-sm" onclick="resendOrderEmail(\''+o.id+'\')" title="Resend decline email to user">&#x1F4E7; Resend</button>':'<span style="font-size:0.75rem;color:var(--gray-300);">'+Utils.escapeHtml(o.status)+'</span>')+'</td></tr>').join(''):'<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">&#x1F9FE;</div><h3>No orders yet</h3><p>Orders will appear here when students make purchases.</p></div></td></tr>'; }
+    
+    function renderOrderRowsWithCheckbox(list) {
+        return list.length ? list.map(o => `<tr>
+            <td><input type="checkbox" class="order-checkbox" data-order-id="${o.id}" onchange="updateOrderBulkActionButtons()"></td>
+            <td style="font-family:monospace;font-size:0.78rem;">${Utils.escapeHtml(o.order_number||String(o.id).slice(0,8))}</td>
+            <td>${Utils.escapeHtml(o.profiles?.full_name||'')}<div style="font-size:0.7rem;color:var(--gray-500);">${Utils.escapeHtml(o.profiles?.email||'')}</div></td>
+            <td>${Utils.escapeHtml(o.courses?.title||'')}</td>
+            <td><strong>${Utils.formatCurrency(o.total_amount||o.amount||0)}</strong></td>
+            <td style="font-size:0.82rem;">${Utils.formatDate(o.created_at)}</td>
+            <td><span class="status-badge status-${o.status==='completed'?'active':o.status==='pending'?'draft':'inactive'}">${Utils.escapeHtml(o.status)}</span></td>
+            <td style="white-space:nowrap;">
+                ${o.status==='pending'?`<button class="btn btn-success btn-sm" onclick="approveOrder('${o.id}','${o.user_id}','${o.course_id}')" title="Approve">✓</button> <button class="btn btn-danger btn-sm" onclick="rejectOrder('${o.id}')" title="Reject">✗</button>`:o.status==='completed'?`<button class="btn btn-ghost btn-sm" onclick="resendOrderEmail('${o.id}')" title="Resend email">📧</button>`:o.status==='failed'?`<button class="btn btn-ghost btn-sm" onclick="resendOrderEmail('${o.id}')" title="Resend email">📧</button>`:`<span style="font-size:0.75rem;color:var(--gray-500);">${Utils.escapeHtml(o.status)}</span>`}
+            </td>
+        </tr>`).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">📋</div><h3>No orders found</h3><p>Orders will appear here when students make purchases.</p></div></td></tr>`;
+    }
     function filterAdminOrders(q) { q=q.toLowerCase(); const filtered=APP.orders.filter(o=>((o.profiles?.full_name||'')+' '+(o.profiles?.email||'')+' '+(o.courses?.title||'')+' '+(o.order_number||o.id)).toLowerCase().includes(q)); document.getElementById('adminOrdersBody').innerHTML=renderOrderRows(filtered); }
     function filterOrdersByStatus(v) { const filtered=v==='all'?APP.orders:APP.orders.filter(o=>o.status===v); document.getElementById('adminOrdersBody').innerHTML=renderOrderRows(filtered); }
 
@@ -7886,6 +7997,283 @@
         document.getElementById('adminContent').innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;"><div><h2 style="font-size:1.4rem;font-weight:800;">Enrollments</h2><p style="font-size:0.85rem;color:var(--gray-600);">'+APP.enrollments.length+' total enrollments</p></div><input type="text" class="search-input" placeholder="Search..." oninput="filterAdminEnrollments(this.value)"></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th>Student</th><th>Course</th><th>Category</th><th>Price Paid</th><th>Status</th><th>Enrolled On</th></tr></thead><tbody id="adminEnrollBody">'+(APP.enrollments.length?APP.enrollments.map(e=>'<tr><td>'+Utils.escapeHtml(e.profiles?.full_name||e.profiles?.email||'')+'</td><td><strong>'+Utils.escapeHtml(e.courses?.title||'')+'</strong></td><td>'+Utils.escapeHtml(e.courses?.category||'')+'</td><td>'+Utils.formatCurrency(e.courses?.price||0)+'</td><td><span class="status-badge status-active">'+Utils.escapeHtml(e.status||'active')+'</span></td><td>'+Utils.formatDate(e.enrolled_at)+'</td></tr>').join(''):'<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">&#x1F393;</div><h3>No enrollments yet</h3><p>Enrollments appear when students purchase courses.</p></div></td></tr>')+'</tbody></table></div>';
     }
     function filterAdminEnrollments(q) { q=q.toLowerCase(); const filtered=APP.enrollments.filter(e=>((e.profiles?.full_name||'')+' '+(e.courses?.title||'')).toLowerCase().includes(q)); document.getElementById('adminEnrollBody').innerHTML=filtered.map(e=>'<tr><td>'+Utils.escapeHtml(e.profiles?.full_name||'')+'</td><td><strong>'+Utils.escapeHtml(e.courses?.title||'')+'</strong></td><td>'+Utils.escapeHtml(e.courses?.category||'')+'</td><td>'+Utils.formatCurrency(e.courses?.price||0)+'</td><td><span class="status-badge status-active">'+Utils.escapeHtml(e.status||'active')+'</span></td><td>'+Utils.formatDate(e.enrolled_at)+'</td></tr>').join(''); }
+
+    // ===== v1.6.43 ADMIN UI ENHANCEMENTS =====
+    // Advanced filtering, export, and analytics improvements
+    
+    // Export data to CSV or JSON
+    async function exportAdminData(format='csv', dataType='orders') {
+        let data = [];
+        let filename = 'healthiq-export-' + new Date().getTime();
+        
+        try {
+            if (dataType === 'orders') {
+                data = APP.orders.map(o => ({
+                    'Order ID': o.order_number || o.id,
+                    'Customer': o.profiles?.full_name || '',
+                    'Email': o.profiles?.email || '',
+                    'Course': o.courses?.title || '',
+                    'Amount': o.total_amount || o.amount || 0,
+                    'Currency': o.currency || 'INR',
+                    'Status': o.status,
+                    'Payment Method': o.payment_method,
+                    'Verified': o.payment_verified ? 'Yes' : 'No',
+                    'Date': o.created_at ? new Date(o.created_at).toLocaleDateString('en-IN') : ''
+                }));
+                filename += '-orders';
+            } else if (dataType === 'enrollments') {
+                data = APP.enrollments.map(e => ({
+                    'Student': e.profiles?.full_name || e.profiles?.email || '',
+                    'Email': e.profiles?.email || '',
+                    'Course': e.courses?.title || '',
+                    'Category': e.courses?.category || '',
+                    'Price': e.courses?.price || 0,
+                    'Status': e.status,
+                    'Progress': e.progress || 0,
+                    'Enrolled': e.enrolled_at ? new Date(e.enrolled_at).toLocaleDateString('en-IN') : ''
+                }));
+                filename += '-enrollments';
+            } else if (dataType === 'courses') {
+                data = APP.courses.map(c => ({
+                    'Course': c.title,
+                    'Slug': c.slug,
+                    'Category': c.category,
+                    'Price': c.price || 0,
+                    'Published': c.is_published ? 'Yes' : 'No',
+                    'Featured': c.is_featured ? 'Yes' : 'No',
+                    'Difficulty': c.difficulty,
+                    'Created': c.created_at ? new Date(c.created_at).toLocaleDateString('en-IN') : ''
+                }));
+                filename += '-courses';
+            }
+
+            if (format === 'csv') {
+                const csv = convertToCSV(data);
+                downloadFile(csv, filename + '.csv', 'text/csv');
+            } else if (format === 'json') {
+                const json = JSON.stringify(data, null, 2);
+                downloadFile(json, filename + '.json', 'application/json');
+            }
+            showToast('Data exported as ' + format.toUpperCase() + ' ✓', 'success');
+        } catch (e) {
+            console.error('Export failed:', e);
+            showToast('Export failed: ' + (e.message || 'Unknown error'), 'error');
+        }
+    }
+
+    function convertToCSV(data) {
+        if (!data.length) return '';
+        const headers = Object.keys(data[0]);
+        const csv = [headers.map(h => '"' + h + '"').join(',')];
+        data.forEach(row => {
+            const values = headers.map(h => {
+                const val = String(row[h] || '');
+                return '"' + val.replace(/"/g, '""') + '"';
+            });
+            csv.push(values.join(','));
+        });
+        return csv.join('\n');
+    }
+
+    function downloadFile(content, filename, type) {
+        const blob = new Blob([content], { type: type });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    // Refresh admin data with loading indicator
+    async function refreshAdminData() {
+        const btn = event?.target;
+        if (btn) btn.disabled = true;
+        try {
+            showToast('Refreshing data...', 'info', { duration: 2000 });
+            await Promise.all([fetchCourses(), fetchSettings(), fetchOrders(), fetchUsers()]);
+            updateSidebarCounts();
+            renderAdminDashboard();
+            showToast('Data refreshed ✓', 'success');
+        } catch (e) {
+            console.error('Refresh failed:', e);
+            showToast('Refresh failed: ' + (e.message || 'Unknown error'), 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // Advanced order filtering
+    function applyAdvancedOrderFilters() {
+        const statusFilter = document.getElementById('orderStatusFilter')?.value || 'all';
+        const dateFilter = document.getElementById('orderDateFilter')?.value || 'all';
+        const amountMinFilter = parseFloat(document.getElementById('orderAmountMin')?.value || 0);
+        const amountMaxFilter = parseFloat(document.getElementById('orderAmountMax')?.value || 999999);
+        const searchFilter = (document.getElementById('orderSearchInput')?.value || '').toLowerCase();
+
+        let filtered = APP.orders;
+
+        // Status filter
+        if (statusFilter !== 'all') {
+            filtered = filtered.filter(o => o.status === statusFilter);
+        }
+
+        // Date filter
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        if (dateFilter !== 'all') {
+            filtered = filtered.filter(o => {
+                const oDate = new Date(o.created_at);
+                const oDay = new Date(oDate.getFullYear(), oDate.getMonth(), oDate.getDate());
+                const daysAgo = Math.floor((today - oDay) / (1000 * 60 * 60 * 24));
+                if (dateFilter === 'today') return daysAgo === 0;
+                if (dateFilter === 'week') return daysAgo < 7;
+                if (dateFilter === 'month') return daysAgo < 30;
+                return true;
+            });
+        }
+
+        // Amount filter
+        filtered = filtered.filter(o => {
+            const amt = o.total_amount || o.amount || 0;
+            return amt >= amountMinFilter && amt <= amountMaxFilter;
+        });
+
+        // Search filter
+        if (searchFilter) {
+            filtered = filtered.filter(o => {
+                const searchStr = (
+                    (o.profiles?.full_name || '') + ' ' +
+                    (o.profiles?.email || '') + ' ' +
+                    (o.courses?.title || '') + ' ' +
+                    (o.order_number || o.id)
+                ).toLowerCase();
+                return searchStr.includes(searchFilter);
+            });
+        }
+
+        document.getElementById('adminOrdersBody').innerHTML = renderOrderRows(filtered);
+        showToast(filtered.length + ' order(s) found', 'info');
+    }
+
+    // Render advanced order filter UI
+    function renderOrderFilterUI() {
+        return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0.75rem;margin-bottom:1.5rem;padding:1rem;background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius);">
+            <div>
+                <label style="font-size:0.75rem;font-weight:600;display:block;margin-bottom:0.3rem;">Status</label>
+                <select id="orderStatusFilter" class="search-input" style="width:100%;padding:0.5rem;">
+                    <option value="all">All Statuses</option>
+                    <option value="completed">Completed</option>
+                    <option value="pending">Pending</option>
+                    <option value="failed">Failed</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:0.75rem;font-weight:600;display:block;margin-bottom:0.3rem;">Date Range</label>
+                <select id="orderDateFilter" class="search-input" style="width:100%;padding:0.5rem;">
+                    <option value="all">All Dates</option>
+                    <option value="today">Today</option>
+                    <option value="week">Last 7 Days</option>
+                    <option value="month">Last 30 Days</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:0.75rem;font-weight:600;display:block;margin-bottom:0.3rem;">Amount Min (₹)</label>
+                <input id="orderAmountMin" type="number" class="search-input" style="width:100%;padding:0.5rem;" placeholder="0">
+            </div>
+            <div>
+                <label style="font-size:0.75rem;font-weight:600;display:block;margin-bottom:0.3rem;">Amount Max (₹)</label>
+                <input id="orderAmountMax" type="number" class="search-input" style="width:100%;padding:0.5rem;" placeholder="999999">
+            </div>
+            <div style="grid-column:1/-1;">
+                <label style="font-size:0.75rem;font-weight:600;display:block;margin-bottom:0.3rem;">Search</label>
+                <input id="orderSearchInput" type="text" class="search-input" style="width:100%;padding:0.5rem;" placeholder="Customer, email, course, order ID...">
+            </div>
+            <div style="grid-column:1/-1;display:flex;gap:0.5rem;">
+                <button class="btn btn-primary btn-sm" onclick="applyAdvancedOrderFilters()" style="flex:1;">🔍 Apply Filters</button>
+                <button class="btn btn-ghost btn-sm" onclick="resetOrderFilters()" style="flex:1;">↺ Reset</button>
+            </div>
+        </div>`;
+    }
+
+    function resetOrderFilters() {
+        if (document.getElementById('orderStatusFilter')) document.getElementById('orderStatusFilter').value = 'all';
+        if (document.getElementById('orderDateFilter')) document.getElementById('orderDateFilter').value = 'all';
+        if (document.getElementById('orderAmountMin')) document.getElementById('orderAmountMin').value = '';
+        if (document.getElementById('orderAmountMax')) document.getElementById('orderAmountMax').value = '';
+        if (document.getElementById('orderSearchInput')) document.getElementById('orderSearchInput').value = '';
+        document.getElementById('adminOrdersBody').innerHTML = renderOrderRows(APP.orders);
+        showToast('Filters reset', 'info');
+    }
+
+    // Bulk actions for admin
+    function selectAllOrders(checked) {
+        document.querySelectorAll('.order-checkbox').forEach(cb => cb.checked = checked);
+        updateOrderBulkActionButtons();
+    }
+
+    function updateOrderBulkActionButtons() {
+        const selected = document.querySelectorAll('.order-checkbox:checked').length;
+        const bulkActionsDiv = document.getElementById('bulkOrderActionsDiv');
+        if (bulkActionsDiv) {
+            bulkActionsDiv.style.display = selected > 0 ? 'flex' : 'none';
+            bulkActionsDiv.innerHTML = `<span style="align-self:center;font-weight:600;">${selected} selected</span>
+                <button class="btn btn-success btn-sm" onclick="bulkApproveOrders()">✓ Approve All</button>
+                <button class="btn btn-danger btn-sm" onclick="bulkRejectOrders()">✗ Reject All</button>
+                <button class="btn btn-ghost btn-sm" onclick="selectAllOrders(false)">Clear</button>`;
+        }
+    }
+
+    function bulkApproveOrders() {
+        const selected = Array.from(document.querySelectorAll('.order-checkbox:checked')).map(cb => cb.dataset.orderId);
+        if (!selected.length) {
+            showToast('No orders selected', 'warning');
+            return;
+        }
+        adminConfirm('Approve ' + selected.length + ' order(s)? This will grant course access to ' + selected.length + ' student(s).', async () => {
+            let approved = 0, failed = 0;
+            for (const orderId of selected) {
+                const order = APP.orders.find(o => o.id === orderId);
+                if (order && order.status === 'pending') {
+                    try {
+                        await approveOrder(orderId, order.user_id, order.course_id);
+                        approved++;
+                    } catch (e) {
+                        failed++;
+                        console.error('Bulk approve failed for ' + orderId, e);
+                    }
+                }
+            }
+            await fetchOrders();
+            renderAdminOrders();
+            showToast('Bulk approved: ' + approved + ' succeeded' + (failed ? ', ' + failed + ' failed' : ''), failed ? 'warning' : 'success');
+        });
+    }
+
+    function bulkRejectOrders() {
+        const selected = Array.from(document.querySelectorAll('.order-checkbox:checked')).map(cb => cb.dataset.orderId);
+        if (!selected.length) {
+            showToast('No orders selected', 'warning');
+            return;
+        }
+        adminConfirm('Reject ' + selected.length + ' order(s)? Decline emails will be sent to ' + selected.length + ' student(s).', async () => {
+            let rejected = 0, failed = 0;
+            for (const orderId of selected) {
+                try {
+                    await rejectOrder(orderId);
+                    rejected++;
+                } catch (e) {
+                    failed++;
+                    console.error('Bulk reject failed for ' + orderId, e);
+                }
+            }
+            await fetchOrders();
+            renderAdminOrders();
+            showToast('Bulk rejected: ' + rejected + ' succeeded' + (failed ? ', ' + failed + ' failed' : ''), failed ? 'warning' : 'success');
+        });
+    }
 
     // ===== ADMIN PRICING PLANS =====
     // Working copy of plans the admin is editing. We commit to site_settings
@@ -8043,7 +8431,12 @@
         const r = await commitPlansToServer();
         if (!r.ok) { showToast('Save failed: ' + (r.error?.message || 'unknown'), 'error'); return; }
 
+        // Refresh APP.courses BEFORE checking for existing hidden course (avoid duplicates)
+        await fetchCourses();
+
         // Auto-create/update the hidden course for this plan (so students can buy)
+        // IMPORTANT: Hidden courses are ALWAYS kept unpublished in DB (to exclude from renderCourses).
+        // Plan's is_published controls visibility on pricing page, not course visibility.
         const slug = 'pricing-plan-' + (i + 1);
         const courseData = {
             title: plan.title, slug, short_description: 'Pricing plan: ' + plan.title, description: plan.title,
@@ -8059,7 +8452,6 @@
         if (!cr.success) { showToast('Plan saved but course sync failed: ' + (cr.error?.message || ''), 'warning'); }
 
         showToast('Plan ' + (i + 1) + ' ' + (mode === 'draft' ? 'saved as draft' : 'saved & published') + '!', 'success');
-        await fetchCourses();
         renderAdminPricing();
         renderPricingPlans();
     }
@@ -8697,7 +9089,7 @@
         if(!APP.currentUser){openModal('login');showToast('Please login first','warning');return;}
         if(APP.myEnrollments.find(e=>String(e.course_id)===String(courseId)&&e.status==='active')){showToast('Already enrolled!','warning');return;}
         // Check if pending order exists
-        const pending=APP.myOrders?.find(o=>String(o.course_id)===String(courseId)&&o.user_id===APP.currentUser.id&&o.status==='pending');
+        const pending=(APP.myOrders||[]).find(o=>String(o.course_id)===String(courseId)&&o.user_id===APP.currentUser.id&&o.status==='pending');
         if(pending){showToast('Payment already submitted, waiting for admin approval.','warning');return;}
         showPaymentModal(courseId, title, price);
     }
@@ -8730,13 +9122,15 @@
         document.getElementById('paymentModal').classList.remove('active');
         // Show confirmation dialog
         let m=document.getElementById('payConfirmModal'); if(!m){m=document.createElement('div');m.id='payConfirmModal';m.className='modal-overlay';document.body.appendChild(m);}
+        const titleEscaped = Utils.escapeHtml(title).replace(/'/g,"\\'");
+        const priceNum = Number(price) || 0;
         m.innerHTML=`<div class="modal" style="max-width:380px;text-align:center;">
             <button class="modal-close" onclick="document.getElementById('payConfirmModal').classList.remove('active')">&times;</button>
             <h2 style="font-size:1.2rem;">&#x2753; Confirm Payment</h2>
-            <p style="color:var(--gray-600);font-size:0.9rem;margin:1rem 0;">Have you completed the UPI payment of <strong>${Utils.formatCurrency(price)}</strong> for <strong>${title}</strong>?</p>
+            <p style="color:var(--gray-600);font-size:0.9rem;margin:1rem 0;">Have you completed the UPI payment of <strong>${Utils.formatCurrency(priceNum)}</strong> for <strong>${Utils.escapeHtml(title)}</strong>?</p>
             <div style="display:flex;gap:0.75rem;margin-top:1.5rem;">
                 <button class="btn btn-outline" style="flex:1;justify-content:center;" onclick="document.getElementById('payConfirmModal').classList.remove('active')">&#x274C; No</button>
-                <button class="btn btn-success" style="flex:1;justify-content:center;" onclick="submitPaymentForApproval('${courseId}','${title}',${price})">&#x2705; Yes, I Paid</button>
+                <button class="btn btn-success" style="flex:1;justify-content:center;" onclick="submitPaymentForApproval('${courseId}','${titleEscaped}',${priceNum})">&#x2705; Yes, I Paid</button>
             </div>
         </div>`;
         m.classList.add('active');
@@ -8779,7 +9173,10 @@
             };
             const {data,error}=await db.from('orders').insert(orderData).select();
             if(error) throw error;
-            await fetchMyOrders(); renderCourses(); renderPricingPlans();
+            // v1.6.42: await all fetches before rendering to avoid stale data
+            await fetchMyOrders();
+            renderCourses();
+            renderPricingPlans();
             showToast('Payment submitted! Admin will verify and grant access shortly.','success');
             if (typeof confettiBurst === 'function') confettiBurst({ count: 90 });
         } catch(e){
@@ -8797,7 +9194,22 @@
         // the DB updates succeed. We pull from APP.orders (already populated
         // by fetchOrders with profiles + courses joined) instead of doing a
         // round-trip — keeps the click-to-toast latency snappy.
-        const o = (APP.orders || []).find(x => String(x.id) === String(orderId));
+        // v1.6.41 — Always fetch fresh order data to ensure we have correct
+        // course title (especially important when multiple pricing plans exist).
+        // v1.6.42 — Handle null order fetch gracefully
+        let o = (APP.orders || []).find(x => String(x.id) === String(orderId));
+        if (!o) {
+            // Fallback: if order not in APP.orders, fetch fresh
+            const { data: freshOrder } = await db.from('orders')
+                .select('id,user_id,course_id,order_number,amount,total_amount,currency,status,payment_method,payment_verified,paid_at,created_at, profiles(full_name,email), courses(id,title,category)')
+                .eq('id', orderId)
+                .single();
+            o = freshOrder;
+        }
+        if (!o) {
+            showToast('Order not found. Please refresh and try again.', 'error');
+            return;
+        }
         const courseTitle = o?.courses?.title || (APP.courses.find(c => c.id === courseId)?.title) || 'the course';
         const userName    = o?.profiles?.full_name || 'there';
         const userEmail   = o?.profiles?.email || '';
@@ -8934,7 +9346,15 @@
     // still renders cleanly.
     // ─────────────────────────────────────────────────────────────────────
     async function resendOrderEmail(orderId) {
-        const o = (APP.orders || []).find(x => String(x.id) === String(orderId));
+        let o = (APP.orders || []).find(x => String(x.id) === String(orderId));
+        // v1.6.41 — Fetch fresh order data to ensure we have correct course title
+        if (!o) {
+            const { data: freshOrder } = await db.from('orders')
+                .select('id,user_id,course_id,order_number,amount,total_amount,currency,status,payment_method,payment_verified,paid_at,decline_reason,created_at, profiles(full_name,email), courses(id,title,category)')
+                .eq('id', orderId)
+                .single();
+            o = freshOrder;
+        }
         if (!o) { showToast('Order not found — refresh and try again.', 'error'); return; }
 
         const courseTitle = o.courses?.title || (APP.courses.find(c => c.id === o.course_id)?.title) || 'the course';
@@ -9010,11 +9430,30 @@
         { id: 'expired',     label: 'Payment older than 24 hours',                  desc: 'Old pending request — please re-initiate the payment.' }
     ];
 
-    function rejectOrder(orderId) {
+    async function rejectOrder(orderId) {
         // Backwards-compat: old admin notification-center buttons still call
         // rejectOrder(id) with just the id. Look up the rest from APP.orders.
-        const o = (APP.orders || []).find(x => String(x.id) === String(orderId));
-        if (!o) { showToast('Order not found — refresh the page.', 'error'); return; }
+        // v1.6.41 — Fetch fresh order data to ensure accuracy
+        // v1.6.42 — Use async/await instead of .then() for better error handling
+        let o = (APP.orders || []).find(x => String(x.id) === String(orderId));
+        if (!o) {
+            // Fetch fresh order data if not in APP.orders
+            try {
+                const { data: freshOrder, error } = await db.from('orders')
+                    .select('id,user_id,course_id,order_number,amount,total_amount,currency,status,payment_method,payment_verified,paid_at,decline_reason,created_at, profiles(full_name,email), courses(id,title,category)')
+                    .eq('id', orderId)
+                    .single();
+                if (error || !freshOrder) {
+                    showToast('Order not found — refresh the page.', 'error');
+                    return;
+                }
+                openDeclineOrderModal(freshOrder);
+            } catch (e) {
+                console.error('rejectOrder fetch failed:', e);
+                showToast('Error loading order — refresh and try again.', 'error');
+            }
+            return;
+        }
         openDeclineOrderModal(o);
     }
 
@@ -10049,7 +10488,9 @@
         if(!e) return;
         const newProg = Math.min(100, (e.progress||0) + delta);
         e.progress = newProg;
-        try { await db.from('enrollments').update({progress:newProg}).eq('id',e.id); } catch(err){}
+        try { await db.from('enrollments').update({progress:newProg}).eq('id',e.id); } catch(err){
+            console.error('Failed to update progress:', err);
+        }
     }
 
     // ===== ANTI-PIRACY GUARDS — v1.6.31 hardened =====

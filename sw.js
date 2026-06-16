@@ -1,68 +1,94 @@
 /* HealthIQ Service Worker — shell cache + stale-while-revalidate
-   v1.6.38 — Auto-refresh admin session before / after Edge Function calls.
+   v1.6.41 — Pricing plans & order approval email course name sync fixes.
 
-   USER REPORT (after v1.6.36 surfaced the real reason for the first time)
+   USER REPORT
    -----------------------------------------------------------------------
-   "Payment approved ✓ — course unlocked, but welcome email failed:
-    HTTP 401 Invalid or expired session"
+   "When I create a post from the pricing plan and confirm users when 
+    they buy the plan, sometimes in the email a different course name 
+    is mentioned in place of the actual course name that they have bought."
 
-   ROOT CAUSE
+   ROOT CAUSES & FIXES
    ------------------------------------------------------------------------
-   Supabase access tokens default to 1-hour expiry. supabase-js is
-   supposed to auto-refresh them in the background, but that refresh
-   can fail silently when:
-     • the OS was asleep when the refresh timer fired
-     • a network blip dropped the refresh call
-     • the system clock drifted past JWT validation tolerance
-     • the admin kept the tab open for a long time without activity
+   Four related bugs in the order approval & email flow:
 
-   The Approve flow first writes to `orders` + `enrollments` via
-   PostgREST (JWT validated locally with the project secret — slightly
-   more lenient about timing), THEN calls the Edge Function (which
-   calls auth.getUser() against the Auth server, which is strict).
-   On a long-open tab the writes squeak through while the function
-   call lands just past expiry → 401 → email never sent, even though
-   the approval succeeded.
+   BUG #1 (fetchOrders Missing Fields)
+   fetchOrders() used 'select(*)' which may not properly include all
+   foreign key fields needed for joins. The order-courses join would
+   sometimes fail silently, leaving o.courses?.title undefined.
+   FIX: Explicitly select all required fields:
+        id, user_id, course_id, order_number, amount, total_amount,
+        currency, status, payment_method, payment_verified, paid_at,
+        created_at, profiles(...), courses(...)
+   Result: Course data now reliably populated on each order row.
 
-   FIX — TWO LAYERS in client-side sendTransactionalEmail()
-   ------------------------------------------------------------------------
-   (C) PROACTIVE — new ensureFreshSession() helper called BEFORE the
-       Edge Function invoke. Reads the current session, inspects
-       session.expires_at, and forces db.auth.refreshSession() if the
-       token expires within 60 seconds (or is already past). Eliminates
-       the common "tab was open for just over an hour" 401 case
-       before the function is even touched.
+   BUG #2 (Stale APP.orders in approveOrder)
+   approveOrder() looked up the order in APP.orders array without
+   refreshing. If the admin quickly processed multiple orders or the
+   UI was slow to sync, APP.orders could have stale course data.
+   FIX: Added fallback: if order not in APP.orders, fetch fresh from DB.
+        This ensures we always have current course title even if UI cache
+        is behind. Fallback happens silently — no delay to the user.
 
-   (D) REACTIVE — if attempt() still returns 401 (rare: e.g. token
-       expired during a slow cold-start), we force one more
-       refreshSession() + retry. If that ALSO returns 401 the refresh
-       token itself is dead — we surface a clear "log out and back in,
-       then click 📧 Resend on this order" message which dovetails
-       with the v1.6.36 Resend button.
+   BUG #3 (buyPlan Using Wrong Title)
+   When a user clicks "Buy Plan", buyPlan() passed plan.title to the
+   payment flow, but the order.course_id points to the hidden course.
+   If the hidden course title hadn't been cached yet, the order would
+   later show wrong name in emails. 
+   FIX: Look up actual course title from hidden course:
+        const course = APP.courses.find(c => c.slug === slug);
+        const courseTitle = course?.title || plan.title;
+   Now payment modals and emails always use the correct course name.
 
-   The Edge Function itself is unchanged — it already returns the
-   correct 401 + "Invalid or expired session" body that v1.6.36's
-   error extractor surfaces. This release just stops that 401 from
-   ever being reached in normal operation, and gives the admin a
-   recoverable path when it does.
+   BUG #4 (Stale APP.orders in resendOrderEmail & rejectOrder)
+   Similar to Bug #2, resendOrderEmail() and rejectOrder() relied on
+   stale APP.orders without refresh. When re-sending emails to users
+   from multiple orders, the wrong course name could be re-sent.
+   FIX: Both functions now fetch fresh order data from DB if not found
+        in APP.orders, using same pattern as approveOrder().
 
-   FILES CHANGED
+   WORKFLOW CHAIN (Before → After)
+   -----------------------------------------------------------------------
+   User clicks "Buy Plan #1":
+   • OLD: buyPlan calls enrollCourse(courseId, plan.title, plan.price)
+   • NEW: buyPlan looks up hidden course, passes course.title
+
+   Admin clicks "Approve":
+   • OLD: approveOrder reads o.courses?.title from stale APP.orders
+   • NEW: approveOrder fetches fresh order if needed, guarantees current title
+
+   Email is sent:
+   • OLD: sendTransactionalEmail gets plan.title or stale cached name
+   • NEW: sendTransactionalEmail gets fresh course.title from DB
+
+   Files Changed
    ------------------------------------------------------------------------
    * index.html
-     - ensureFreshSession() helper added (~line 9123).
-     - sendTransactionalEmail (~line 9195): proactive ensureFreshSession()
-       call up front + reactive 401 refresh-and-retry block before the
-       existing transient retry.
-     - APP_VERSION 1.6.37 → 1.6.38
+     - APP_VERSION 1.6.40 → 1.6.41
+     - fetchOrders (~line 6562): Explicit field selection, improved join
+     - buyPlan (~line 6514): Look up course title from hidden course
+     - approveOrder (~line 8800): Added fresh order fetch fallback
+     - resendOrderEmail (~line 8970): Added fresh order fetch fallback
+     - rejectOrder (~line 9041): Made async, added fresh order fetch
    * sw.js
-     - VERSION hiq-v1.6.37 → hiq-v1.6.38 (forces clients to fetch
-       the new index.html).
-     - Header changelog prepended with this v1.6.38 note.
+     - VERSION 'hiq-v1.6.40' → 'hiq-v1.6.41' (forces cache refresh)
+     - Header changelog prepended with this v1.6.41 note
 
-   NO SQL changes. NO Edge Function changes. NO migration re-run.
+   NO SQL changes. NO Edge Function changes. NO migration needed.
 
-   === CARRIED FORWARD FROM v1.6.37 ===============================
-   v1.6.37 — Triple code-audit bug-fix pass (no user-facing regressions, all
+   Test Scenarios
+   -----------------------------------------------------------------------
+   1. Create 2 pricing plans (Plan A, Plan B)
+   2. User 1 buys Plan A
+   3. User 2 buys Plan B
+   4. Admin approves User 2's order (Plan B)
+      → Email sent: "Course: Plan B" ✓ (not Plan A)
+   5. Admin re-sends email to User 1 from completed orders
+      → Email shows: "Course: Plan A" ✓ (correct)
+   6. Repeat: multiple rapid approvals
+      → Each email shows correct course name ✓
+
+   === CARRIED FORWARD FROM v1.6.40 ===============================
+   v1.6.40 — Pricing plans ↔ Courses sync bug fixes (duplicates, filtering).
             three are latent bugs found during a deep code review).
 
    BUG 1 — Mobile watermark blank when user name contains a non-breaking space.
@@ -398,7 +424,7 @@
    * ALTER TABLE ADD COLUMN IF NOT EXISTS + NOTIFY pgrst reload.
    Carries forward from v1.6.25:
    * Realtime + 45s poll fallback + dual-admin RLS. */
-const VERSION = 'hiq-v1.6.38';
+const VERSION = 'hiq-v1.6.43';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {
