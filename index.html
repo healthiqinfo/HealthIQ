@@ -3932,6 +3932,11 @@
                                 <span>My Courses</span>
                                 <span class="umi-arrow">&rsaquo;</span>
                             </button>
+                            <button class="user-menu-item" onclick="openChangePasswordModal()">
+                                <span class="umi-icon">&#x1F512;</span>
+                                <span>Change Password</span>
+                                <span class="umi-arrow">&rsaquo;</span>
+                            </button>
                             <button class="user-menu-item admin-item" onclick="openAdminPanel()" id="adminMenuItem" style="display:none;">
                                 <span class="umi-icon">&#x2699;&#xFE0F;</span>
                                 <span>Admin Panel</span>
@@ -5940,7 +5945,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.44';
+    const APP_VERSION = '1.6.45';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -6381,6 +6386,16 @@
             if(error)throw error;
             showToast('Password reset link sent to '+email+'! Check your inbox.','success');
         }catch(e){showToast(e.message||'Failed to send reset email','error');}
+    }
+
+    // v1.6.45 — Send password reset for a known email (used from duplicate account modal)
+    async function handleForgotPasswordForEmail(email) {
+        if (!email || !isSupabaseConfigured()) { showToast('Service unavailable', 'error'); return; }
+        try {
+            const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: getAuthRedirectUrl() });
+            if (error) throw error;
+            showToast('Password reset link sent to ' + email + '! Check your inbox.', 'success');
+        } catch (e) { showToast(e.message || 'Failed to send reset email', 'error'); }
     }
 
     // ===== COURSE SEARCH & PAGINATION =====
@@ -7296,6 +7311,28 @@
                 }
                 throw error;
             }
+            // v1.6.45 — Detect duplicate registration: when "Confirm email" is ON,
+            // Supabase returns user with empty identities[] for existing emails.
+            // It does NOT return an error — it silently pretends the signup succeeded.
+            if (data.user && (!data.user.identities || data.user.identities.length === 0)) {
+                closeModal('register');
+                let m = document.getElementById('duplicateAccountModal');
+                if (!m) { m = document.createElement('div'); m.id = 'duplicateAccountModal'; m.className = 'modal-overlay'; document.body.appendChild(m); }
+                const safeEmail = em.replace(/'/g, "\\'");
+                m.innerHTML = ''
+                    + '<div class="modal" style="max-width:440px;text-align:center;">'
+                    +   '<button class="modal-close" onclick="document.getElementById(\'duplicateAccountModal\').classList.remove(\'active\')">&times;</button>'
+                    +   '<div style="font-size:3rem;margin-bottom:1rem;">⚠️</div>'
+                    +   '<h2 style="font-size:1.3rem;margin:0 0 0.5rem;">Account Already Exists</h2>'
+                    +   '<p style="color:var(--gray-600);margin:0.5rem 0 1.5rem;">An account with <strong>' + Utils.escapeHtml(em) + '</strong> already exists. Please login instead, or reset your password if you forgot it.</p>'
+                    +   '<div style="display:flex;flex-direction:column;gap:0.75rem;">'
+                    +     '<button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="document.getElementById(\'duplicateAccountModal\').classList.remove(\'active\');setTimeout(()=>openModal(\'login\'),150)">🔑 Go to Login</button>'
+                    +     '<button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="document.getElementById(\'duplicateAccountModal\').classList.remove(\'active\');handleForgotPasswordForEmail(\'' + safeEmail + '\')">📧 Send Password Reset Email</button>'
+                    +   '</div>'
+                    + '</div>';
+                m.classList.add('active');
+                return;
+            }
             if(data.user&&data.session){
                 // Poll briefly for the profile row created by the DB trigger
                 // (replaces brittle setTimeout(800ms) — handles slow triggers + retries).
@@ -7350,6 +7387,82 @@
         updateAuthUI(); closeAdminPanel(); renderCourses(); renderPricingPlans();
         showToast('Logged out');
         document.getElementById('userMenu').classList.remove('active');
+    }
+
+    // ===== v1.6.45 — CHANGE PASSWORD (Profile) =====
+    function openChangePasswordModal() {
+        document.getElementById('userMenu').classList.remove('active');
+        let m = document.getElementById('changePasswordModal');
+        if (!m) { m = document.createElement('div'); m.id = 'changePasswordModal'; m.className = 'modal-overlay'; document.body.appendChild(m); }
+        m.innerHTML = `<div class="modal" style="max-width:420px;">
+            <button class="modal-close" onclick="document.getElementById('changePasswordModal').classList.remove('active')">&times;</button>
+            <div style="text-align:center;margin-bottom:1.5rem;">
+                <span style="display:inline-block;width:48px;height:48px;line-height:48px;border-radius:50%;background:#eef2ff;font-size:24px;">🔐</span>
+                <h2 style="font-size:1.3rem;margin:0.75rem 0 0.25rem;">Change Password</h2>
+                <p style="font-size:0.85rem;color:var(--gray-600);">Enter your new password below.</p>
+            </div>
+            <form onsubmit="handleChangePassword(event)">
+                <div class="form-group">
+                    <label for="newPassword">New Password</label>
+                    <div class="password-wrap">
+                        <input type="password" id="newPassword" required minlength="6" placeholder="Minimum 6 characters" autocomplete="new-password">
+                        <button type="button" class="password-toggle" aria-label="Show password" onclick="togglePassword(this)">&#x1F441;</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="confirmNewPassword">Confirm New Password</label>
+                    <div class="password-wrap">
+                        <input type="password" id="confirmNewPassword" required minlength="6" placeholder="Re-enter new password" autocomplete="new-password">
+                        <button type="button" class="password-toggle" aria-label="Show password" onclick="togglePassword(this)">&#x1F441;</button>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:1rem;" id="changePasswordBtn">🔒 Update Password</button>
+            </form>
+            <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--gray-200);text-align:center;">
+                <button type="button" class="btn btn-ghost btn-sm" onclick="sendPasswordResetFromProfile()" style="font-size:0.82rem;">Forgot password? Send reset email instead</button>
+            </div>
+        </div>`;
+        m.classList.add('active');
+    }
+
+    async function handleChangePassword(event) {
+        event.preventDefault();
+        const newPw = document.getElementById('newPassword').value;
+        const confirmPw = document.getElementById('confirmNewPassword').value;
+        if (!newPw || !confirmPw) { showToast('Please fill both fields', 'error'); return; }
+        if (newPw.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
+        if (newPw !== confirmPw) { showToast('Passwords do not match', 'error'); return; }
+        if (!isSupabaseConfigured()) { showToast('Service unavailable', 'error'); return; }
+
+        const btn = document.getElementById('changePasswordBtn');
+        btn.classList.add('btn-loading'); btn.disabled = true;
+        try {
+            const { error } = await db.auth.updateUser({ password: newPw });
+            if (error) throw error;
+            document.getElementById('changePasswordModal').classList.remove('active');
+            showToast('Password updated successfully! ✓', 'success');
+        } catch (e) {
+            const msg = e?.message || 'Failed to update password';
+            if (/same|identical/i.test(msg)) {
+                showToast('New password must be different from your current password.', 'warning');
+            } else {
+                showToast('Error: ' + msg, 'error');
+            }
+        } finally {
+            btn.classList.remove('btn-loading'); btn.disabled = false;
+        }
+    }
+
+    async function sendPasswordResetFromProfile() {
+        if (!APP.currentUser?.email) { showToast('No email found', 'error'); return; }
+        try {
+            const { error } = await db.auth.resetPasswordForEmail(APP.currentUser.email, { redirectTo: getAuthRedirectUrl() });
+            if (error) throw error;
+            document.getElementById('changePasswordModal').classList.remove('active');
+            showToast('Password reset email sent to ' + APP.currentUser.email + ' ✓', 'success');
+        } catch (e) {
+            showToast('Error: ' + (e.message || 'Failed to send reset email'), 'error');
+        }
     }
 
     async function initAuth() {
