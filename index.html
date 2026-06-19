@@ -5940,7 +5940,7 @@
     // the admin can confirm at a glance which code is actually running (vs a
     // stale service-worker cache). Always update this when shipping fixes
     // that the admin needs to verify are live.
-    const APP_VERSION = '1.6.43';
+    const APP_VERSION = '1.6.44';
     try { window.HEALTHIQ_VERSION = APP_VERSION; } catch (_) {}
 
     // ===== DEFAULT_SETTINGS — single source of bootstrap fallbacks =====
@@ -7277,7 +7277,25 @@
                     emailRedirectTo: redirectTo,
                     data:{full_name:fn+' '+ln,first_name:fn,last_name:ln,username:un}
                 }
-            }); if(error)throw error;
+            }); 
+            if(error) {
+                // v1.6.43 — Supabase returns unhelpful error messages when SMTP
+                // fails (e.g. message: "{}"). Detect and show a user-friendly msg.
+                const errMsg = error.message || '';
+                if (errMsg === '{}' || errMsg === 'undefined' || !errMsg.trim()) {
+                    throw new Error('Account creation failed — the confirmation email could not be sent. Please try again in a few minutes, or contact support.');
+                }
+                // Rate limit: Supabase returns 429 when too many signup attempts
+                if (error.status === 429 || /rate|limit|too many/i.test(errMsg)) {
+                    throw new Error('Too many signup attempts. Please wait a minute and try again.');
+                }
+                // User already exists (Supabase won't reveal this directly for security,
+                // but some configurations leak it)
+                if (/already registered|already exists|duplicate/i.test(errMsg)) {
+                    throw new Error('An account with this email may already exist. Try logging in or resetting your password.');
+                }
+                throw error;
+            }
             if(data.user&&data.session){
                 // Poll briefly for the profile row created by the DB trigger
                 // (replaces brittle setTimeout(800ms) — handles slow triggers + retries).
