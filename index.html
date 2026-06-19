@@ -7988,8 +7988,8 @@
             </td>
         </tr>`).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">📋</div><h3>No orders found</h3><p>Orders will appear here when students make purchases.</p></div></td></tr>`;
     }
-    function filterAdminOrders(q) { q=q.toLowerCase(); const filtered=APP.orders.filter(o=>((o.profiles?.full_name||'')+' '+(o.profiles?.email||'')+' '+(o.courses?.title||'')+' '+(o.order_number||o.id)).toLowerCase().includes(q)); document.getElementById('adminOrdersBody').innerHTML=renderOrderRows(filtered); }
-    function filterOrdersByStatus(v) { const filtered=v==='all'?APP.orders:APP.orders.filter(o=>o.status===v); document.getElementById('adminOrdersBody').innerHTML=renderOrderRows(filtered); }
+    function filterAdminOrders(q) { q=q.toLowerCase(); const filtered=APP.orders.filter(o=>((o.profiles?.full_name||'')+' '+(o.profiles?.email||'')+' '+(o.courses?.title||'')+' '+(o.order_number||o.id)).toLowerCase().includes(q)); document.getElementById('adminOrdersBody').innerHTML=renderOrderRowsWithCheckbox(filtered); }
+    function filterOrdersByStatus(v) { const filtered=v==='all'?APP.orders:APP.orders.filter(o=>o.status===v); document.getElementById('adminOrdersBody').innerHTML=renderOrderRowsWithCheckbox(filtered); }
 
     async function updateOrderStatus(id,status) { adminConfirm('Mark this order as <strong>'+status+'</strong>?', async()=>{ try{const{error}=await db.from('orders').update({status}).eq('id',id); if(error)throw error; showToast('Order marked as '+status); await fetchOrders(); renderAdminOrders(); updateSidebarCounts();}catch(e){showToast('Error: '+e.message,'error');} }); }
 
@@ -8154,7 +8154,7 @@
             });
         }
 
-        document.getElementById('adminOrdersBody').innerHTML = renderOrderRows(filtered);
+        document.getElementById('adminOrdersBody').innerHTML = renderOrderRowsWithCheckbox(filtered);
         showToast(filtered.length + ' order(s) found', 'info');
     }
 
@@ -8204,7 +8204,7 @@
         if (document.getElementById('orderAmountMin')) document.getElementById('orderAmountMin').value = '';
         if (document.getElementById('orderAmountMax')) document.getElementById('orderAmountMax').value = '';
         if (document.getElementById('orderSearchInput')) document.getElementById('orderSearchInput').value = '';
-        document.getElementById('adminOrdersBody').innerHTML = renderOrderRows(APP.orders);
+        document.getElementById('adminOrdersBody').innerHTML = renderOrderRowsWithCheckbox(APP.orders);
         showToast('Filters reset', 'info');
     }
 
